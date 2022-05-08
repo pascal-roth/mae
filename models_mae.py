@@ -10,23 +10,47 @@
 # --------------------------------------------------------
 
 from functools import partial
+from typing import Optional, Any
 
 import torch
 import torch.nn as nn
+import pytorch_lightning as pl
 
+import timm
+
+assert timm.__version__ == "0.3.2"  # version check
+import timm.optim.optim_factory as optim_factory
 from timm.models.vision_transformer import PatchEmbed, Block
 
-from util.pos_embed import get_2d_sincos_pos_embed
+from self_sup_seg.third_party.mae.util.pos_embed import get_2d_sincos_pos_embed
+from self_sup_seg.third_party.mae.util.lr_sched import WarmupCosLRScheduler
 
 
-class MaskedAutoencoderViT(nn.Module):
+class MaskedAutoencoderViT(pl.LightningModule):
     """ Masked Autoencoder with VisionTransformer backbone
     """
     def __init__(self, img_size=224, patch_size=16, in_chans=3,
                  embed_dim=1024, depth=24, num_heads=16,
                  decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
-                 mlp_ratio=4., norm_layer=nn.LayerNorm, norm_pix_loss=False):
+                 mlp_ratio=4., norm_layer=nn.LayerNorm, norm_pix_loss=False,
+                 mask_ratio=0.75, weight_decay=0.05, lr=1e-3, min_lr=0, warmup_epochs=40):
         super().__init__()
+
+        # --------------------------------------------------------------------------
+        self.mask_ratio: float = mask_ratio
+        self.weight_decay: float = weight_decay
+        self.lr: float = lr
+        self.min_lr: float = min_lr
+        self.warumup_epochs: int = warmup_epochs
+        self.save_hyperparameters()
+
+        # eff_batch_size = args.batch_size * args.accum_iter * misc.get_world_size()
+        #
+        # if args.lr is None:  # only base_lr is specified
+        #     args.lr = args.blr * eff_batch_size / 256
+        #
+        # print("base lr: %.2e" % (args.lr * 256 / eff_batch_size))
+        # print("actual lr: %.2e" % args.lr)
 
         # --------------------------------------------------------------------------
         # MAE encoder specifics
@@ -120,14 +144,14 @@ class MaskedAutoencoderViT(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], 3, h * p, h * p))
         return imgs
 
-    def random_masking(self, x, mask_ratio):
+    def random_masking(self, x):
         """
         Perform per-sample random masking by per-sample shuffling.
         Per-sample shuffling is done by argsort random noise.
         x: [N, L, D], sequence
         """
         N, L, D = x.shape  # batch, length, dim
-        len_keep = int(L * (1 - mask_ratio))
+        len_keep = int(L * (1 - self.mask_ratio))
         
         noise = torch.rand(N, L, device=x.device)  # noise in [0, 1]
         
@@ -147,15 +171,15 @@ class MaskedAutoencoderViT(nn.Module):
 
         return x_masked, mask, ids_restore
 
-    def forward_encoder(self, x, mask_ratio):
+    def forward_encoder(self, x):
         # embed patches
         x = self.patch_embed(x)
 
         # add pos embed w/o cls token
         x = x + self.pos_embed[:, 1:, :]
 
-        # masking: length -> length * mask_ratio
-        x, mask, ids_restore = self.random_masking(x, mask_ratio)
+        # masking: length -> length * self.mask_ratio
+        x, mask, ids_restore = self.random_masking(x)
 
         # append cls token
         cls_token = self.cls_token + self.pos_embed[:, :1, :]
@@ -213,11 +237,35 @@ class MaskedAutoencoderViT(nn.Module):
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
         return loss
 
-    def forward(self, imgs, mask_ratio=0.75):
-        latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio)
+    def forward(self, imgs):
+        latent, mask, ids_restore = self.forward_encoder(imgs)
         pred = self.forward_decoder(latent, ids_restore)  # [N, L, p*p*3]
+        return pred, mask
+
+    def training_step(self, batch, batch_idx):
+        imgs, _ = batch
+        pred, mask = self.forward(imgs)
         loss = self.forward_loss(imgs, pred, mask)
-        return loss, pred, mask
+        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        return loss
+
+    # def validation_step(self, *args, **kwargs):
+    #
+    def configure_optimizers(self):
+        # TODO: figure out what excatly to pass to optim_factory
+        param_groups = optim_factory.add_weight_decay(self, self.weight_decay)
+        optimizer = torch.optim.AdamW(param_groups, lr=self.lr, betas=(0.9, 0.95))
+        scheduler = WarmupCosLRScheduler(optimizer, init_lr=self.lr, warmup_epochs=self.warumup_epochs,
+                                         min_lr=self.min_lr)
+        return [optimizer], [scheduler]
+
+    def lr_scheduler_step(
+        self,
+        scheduler: WarmupCosLRScheduler,
+        optimizer_idx: int,
+        metric: Optional[Any],
+    ) -> None:
+        scheduler.step(epoch=self.current_epoch)
 
 
 def mae_vit_base_patch16_dec512d8b(**kwargs):

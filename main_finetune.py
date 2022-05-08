@@ -28,15 +28,19 @@ from timm.models.layers import trunc_normal_
 from timm.data.mixup import Mixup
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
 
-import util.lr_decay as lrd
-import util.misc as misc
-from util.datasets import build_dataset
-from util.pos_embed import interpolate_pos_embed
-from util.misc import NativeScalerWithGradNormCount as NativeScaler
+import self_sup_seg.third_party.mae.util.lr_decay as lrd
+import self_sup_seg.third_party.mae.util.misc as misc
+from self_sup_seg.third_party.mae.util.datasets import build_dataset
+from self_sup_seg.third_party.mae.util.pos_embed import interpolate_pos_embed
+from self_sup_seg.third_party.mae.util.misc import NativeScalerWithGradNormCount as NativeScaler
 
-import models_vit
+import self_sup_seg.third_party.mae.models_vit as models_vit
 
-from engine_finetune import train_one_epoch, evaluate
+from self_sup_seg.third_party.mae.engine_finetune import train_one_epoch, evaluate
+
+from pytorch_lightning import Trainer
+from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.loggers import WandbLogger, TestTubeLogger, TensorBoardLogger
 
 
 def get_args_parser():
@@ -156,48 +160,66 @@ def get_args_parser():
 
 
 def main(args):
-    misc.init_distributed_mode(args)
+    # misc.init_distributed_mode(args)
 
-    print('job dir: {}'.format(os.path.dirname(os.path.realpath(__file__))))
-    print("{}".format(args).replace(', ', ',\n'))
+    # print('job dir: {}'.format(os.path.dirname(os.path.realpath(__file__))))
+    # print("{}".format(args).replace(', ', ',\n'))
 
-    device = torch.device(args.device)
+    # device = torch.device(args.device)
 
     # fix the seed for reproducibility
-    seed = args.seed + misc.get_rank()
-    torch.manual_seed(seed)
-    np.random.seed(seed)
+    # seed = args.seed + misc.get_rank()
+    # torch.manual_seed(seed)
+    # np.random.seed(seed)
 
-    cudnn.benchmark = True
+    # cudnn.benchmark = True
 
     dataset_train = build_dataset(is_train=True, args=args)
     dataset_val = build_dataset(is_train=False, args=args)
 
-    if True:  # args.distributed:
-        num_tasks = misc.get_world_size()
-        global_rank = misc.get_rank()
-        sampler_train = torch.utils.data.DistributedSampler(
-            dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
-        )
-        print("Sampler_train = %s" % str(sampler_train))
-        if args.dist_eval:
-            if len(dataset_val) % num_tasks != 0:
-                print('Warning: Enabling distributed evaluation with an eval dataset not divisible by process number. '
-                      'This will slightly alter validation results as extra duplicate entries are added to achieve '
-                      'equal num of samples per-process.')
-            sampler_val = torch.utils.data.DistributedSampler(
-                dataset_val, num_replicas=num_tasks, rank=global_rank, shuffle=True)  # shuffle=True to reduce monitor bias
-        else:
-            sampler_val = torch.utils.data.SequentialSampler(dataset_val)
-    else:
-        sampler_train = torch.utils.data.RandomSampler(dataset_train)
-        sampler_val = torch.utils.data.SequentialSampler(dataset_val)
+    # if True:  # args.distributed:
+    #     num_tasks = misc.get_world_size()
+    #     global_rank = misc.get_rank()
+    #     sampler_train = torch.utils.data.DistributedSampler(
+    #         dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
+    #     )
+    #     print("Sampler_train = %s" % str(sampler_train))
+    #     if args.dist_eval:
+    #         if len(dataset_val) % num_tasks != 0:
+    #             print('Warning: Enabling distributed evaluation with an eval dataset not divisible by process number. '
+    #                   'This will slightly alter validation results as extra duplicate entries are added to achieve '
+    #                   'equal num of samples per-process.')
+    #         sampler_val = torch.utils.data.DistributedSampler(
+    #             dataset_val, num_replicas=num_tasks, rank=global_rank, shuffle=True)  # shuffle=True to reduce monitor bias
+    #     else:
+    #         sampler_val = torch.utils.data.SequentialSampler(dataset_val)
+    # else:
+    sampler_train = torch.utils.data.RandomSampler(dataset_train)
+    sampler_val = torch.utils.data.SequentialSampler(dataset_val)
 
-    if global_rank == 0 and args.log_dir is not None and not args.eval:
-        os.makedirs(args.log_dir, exist_ok=True)
-        log_writer = SummaryWriter(log_dir=args.log_dir)
-    else:
-        log_writer = None
+    # if global_rank == 0 and args.log_dir is not None and not args.eval:
+    #     os.makedirs(args.log_dir, exist_ok=True)
+    #     log_writer = SummaryWriter(log_dir=args.log_dir)
+    # else:
+    #     log_writer = None
+
+    wandb_logger = WandbLogger(
+        name='try_run',  # TODO: add name flag
+        project='DLAD-Ex2-1b',
+        entity='team11_dlad_spring2022',
+        save_dir=os.path.join('.'),  # TODO: add log_dir
+    )
+    tb_s3_logger = TensorBoardLogger(
+        name="tb",
+        version="",
+        save_dir=os.path.join('.'),  # TODO: add log_dir
+    )
+
+    checkpoint_local_callback = ModelCheckpoint(
+        dirpath=os.path.join(os.path.join('.'), 'checkpoints'),  # TODO: add log_dir
+        save_last=True,
+    #    save_top_k=1,
+    )
 
     data_loader_train = torch.utils.data.DataLoader(
         dataset_train, sampler=sampler_train,

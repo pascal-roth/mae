@@ -12,7 +12,7 @@ import os
 import uuid
 from pathlib import Path
 
-import main_linprobe as classification
+import self_sup_seg.third_party.mae.main_linprobe as classification
 import submitit
 
 

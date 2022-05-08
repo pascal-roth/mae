@@ -12,7 +12,7 @@ import os
 import uuid
 from pathlib import Path
 
-import main_pretrain as trainer
+import self_sup_seg.third_party.mae.main_pretrain as trainer
 import submitit
 
 
@@ -32,11 +32,11 @@ def parse_args():
 
 def get_shared_folder() -> Path:
     user = os.getenv("USER")
-    if Path("/checkpoint/").is_dir():
-        p = Path(f"/checkpoint/{user}/experiments")
-        p.mkdir(exist_ok=True)
-        return p
-    raise RuntimeError("No shared folder available")
+    # if Path("/home/{user}/checkpoint/").is_dir():
+    p = Path(f"/home/{user}/checkpoint/experiments")
+    p.mkdir(exist_ok=True)
+    return p
+    #raise RuntimeError("No shared folder available")
 
 
 def get_init_file():
@@ -53,7 +53,7 @@ class Trainer(object):
         self.args = args
 
     def __call__(self):
-        import main_pretrain as trainer
+        # import main_pretrain as trainer
 
         self._setup_gpu_args()
         trainer.main(self.args)
@@ -89,7 +89,7 @@ def main():
         args.job_dir = get_shared_folder() / "%j"
 
     # Note that the folder will depend on the job_id, to easily track experiments
-    executor = submitit.AutoExecutor(folder=args.job_dir, slurm_max_num_timeout=30)
+    executor = submitit.LocalExecutor(folder=args.job_dir) #, slurm_max_num_timeout=30)
 
     num_gpus_per_node = args.ngpus
     nodes = args.nodes

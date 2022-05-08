@@ -18,8 +18,8 @@ import torch
 from timm.data import Mixup
 from timm.utils import accuracy
 
-import util.misc as misc
-import util.lr_sched as lr_sched
+import self_sup_seg.third_party.mae.util.misc as misc
+import self_sup_seg.third_party.mae.util.lr_sched as lr_sched
 
 
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,

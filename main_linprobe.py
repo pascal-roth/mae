@@ -28,15 +28,15 @@ import timm
 assert timm.__version__ == "0.3.2" # version check
 from timm.models.layers import trunc_normal_
 
-import util.misc as misc
-from util.pos_embed import interpolate_pos_embed
-from util.misc import NativeScalerWithGradNormCount as NativeScaler
-from util.lars import LARS
-from util.crop import RandomResizedCrop
+import self_sup_seg.third_party.mae.util.misc as misc
+from self_sup_seg.third_party.mae.util.pos_embed import interpolate_pos_embed
+from self_sup_seg.third_party.mae.util.misc import NativeScalerWithGradNormCount as NativeScaler
+from self_sup_seg.third_party.mae.util.lars import LARS
+from self_sup_seg.third_party.mae.util.crop import RandomResizedCrop
 
-import models_vit
+import self_sup_seg.third_party.mae.models_vit as models_vit
 
-from engine_finetune import train_one_epoch, evaluate
+from self_sup_seg.third_party.mae.engine_finetune import train_one_epoch, evaluate
 
 
 def get_args_parser():
