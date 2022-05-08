@@ -17,6 +17,7 @@ import torch
 import self_sup_seg.third_party.mae.util.misc as misc
 import self_sup_seg.third_party.mae.util.lr_sched as lr_sched
 
+# TODO: currently still used in main_finetune and main_linprog, however removed soon and replaced by pytorch lightning functionalities
 
 def train_one_epoch(model: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
