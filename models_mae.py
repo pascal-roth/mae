@@ -27,14 +27,15 @@ from self_sup_seg.third_party.mae.util.lr_sched import WarmupCosLRScheduler
 
 
 class MaskedAutoencoderViT(pl.LightningModule):
-    """ Masked Autoencoder with VisionTransformer backbone
+    """
+    Masked Autoencoder with VisionTransformer backbone
     """
     def __init__(self, img_size=224, patch_size=16, in_chans=3,
                  embed_dim=1024, depth=24, num_heads=16,
                  decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
                  mlp_ratio=4., norm_layer=nn.LayerNorm, norm_pix_loss=False,
                  mask_ratio=0.75, weight_decay=0.05, lr=1e-3, min_lr=0, warmup_epochs=40,
-                 total_train_epochs: int = 800):
+                 total_train_epochs: int = 400):
         super().__init__()
 
         # --------------------------------------------------------------------------
@@ -251,10 +252,13 @@ class MaskedAutoencoderViT(pl.LightningModule):
         self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         return loss
 
-    # def validation_step(self, *args, **kwargs):
-    #
+    def validation_step(self, batch, batch_idx):
+        imgs, _ = batch
+        pred, mask = self.forward(imgs)
+        loss = self.forward_loss(imgs, pred, mask)
+        self.log("val_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+
     def configure_optimizers(self):
-        # TODO: figure out what excatly to pass to optim_factory
         param_groups = optim_factory.add_weight_decay(self, self.weight_decay)
         optimizer = torch.optim.AdamW(param_groups, lr=self.lr, betas=(0.9, 0.95))
         scheduler = WarmupCosLRScheduler(optimizer, init_lr=self.lr, warmup_epochs=self.warumup_epochs,

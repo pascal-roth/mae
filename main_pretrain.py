@@ -23,7 +23,7 @@ import torchvision.datasets as datasets
 import self_sup_seg.third_party.mae.models_mae as models_mae
 
 from pytorch_lightning import Trainer, seed_everything
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger, TensorBoardLogger
 from pytorch_lightning.plugins.precision.mixed import MixedPrecisionPlugin
 
@@ -88,9 +88,9 @@ def get_args_parser():
                              'all training data into RAM (?)')
     parser.add_argument('--no_pin_mem', action='store_false', dest='pin_mem')
     parser.set_defaults(pin_mem=True)
-    parser.add_argument('--pixel_mean', default=[123.675, 116.280, 103.530],
+    parser.add_argument('--pixel_mean', default=[0.485, 0.456, 0.406],   # [123.675, 116.280, 103.530], (COCO)
                         help='Inputs are normalized with this mean (taken from m2f)')
-    parser.add_argument('--pixel_std', default=[58.395, 57.120, 57.375],
+    parser.add_argument('--pixel_std', default=[0.229, 0.224, 0.225],   # [58.395, 57.120, 57.375],  # COCO
                         help='Inputs are normalized with this std (taken from m2f)')
 
     return parser
@@ -107,14 +107,18 @@ def main(args):
         transforms.ToTensor(),
         transforms.Normalize(mean=args.pixel_mean, std=args.pixel_std)])
     dataset_train = datasets.ImageFolder(os.path.join(args.data_path, 'train'), transform=transform_train)
+    # TODO: potentially change val set transforms similar to the one used in main_finetune
+    dataset_val = datasets.ImageFolder(os.path.join(args.data_path, 'val'), transform=transform_train)
     print(dataset_train)
+    print(dataset_val)
 
-    if False:  # TODO: for distributed training, still have to test args.distributed:
+    if False:  # TODO: for distributed training, still have to test it (and introduce args.distributed):
         sampler_train = torch.utils.data.DistributedSampler(
             dataset_train, num_replicas=args.devices, shuffle=True  # , rank=global_rank
         )
     else:
         sampler_train = torch.utils.data.RandomSampler(dataset_train)
+        sampler_val = torch.utils.data.RandomSampler(dataset_val)
 
     data_loader_train = torch.utils.data.DataLoader(
         dataset_train, sampler=sampler_train,
@@ -122,6 +126,13 @@ def main(args):
         num_workers=args.num_workers,
         pin_memory=args.pin_mem,
         drop_last=True,
+    )
+    data_loader_val = torch.utils.data.DataLoader(
+        dataset_val, sampler=sampler_val,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        pin_memory=args.pin_mem,
+        drop_last=False,
     )
 
     # define LOGGER
@@ -143,6 +154,7 @@ def main(args):
         save_last=True,
         save_top_k=1,
     )
+    lr_monitor = LearningRateMonitor(logging_interval='epoch')
 
     # define the model
     model = models_mae.__dict__[args.model](norm_pix_loss=args.norm_pix_loss, mask_ratio=args.mask_ratio,
@@ -151,13 +163,13 @@ def main(args):
                                             total_train_epochs=args.epochs)
 
     trainer = Trainer(accumulate_grad_batches=args.accum_iter, gradient_clip_val=0,
-                      logger=[wandb_logger, tb_logger], callbacks=[checkpoint_local_callback],
+                      logger=[wandb_logger, tb_logger], callbacks=[checkpoint_local_callback, lr_monitor],
                       max_epochs=args.epochs,
                       strategy="ddp", accelerator="gpu", devices=args.devices,
-                      plugins=[MixedPrecisionPlugin()], precision=16,  # same as doing the loss_scaler
+                      plugins=[MixedPrecisionPlugin()], precision=32,  # same as doing the loss_scaler
                       )
 
-    trainer.fit(model, train_dataloaders=data_loader_train, ckpt_path=args.ckpt_path)
+    trainer.fit(model, train_dataloaders=data_loader_train, val_dataloaders=data_loader_val, ckpt_path=args.ckpt_path)
 
 
 if __name__ == '__main__':
