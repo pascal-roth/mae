@@ -147,7 +147,8 @@ def main(args):
     # define the model
     model = models_mae.__dict__[args.model](norm_pix_loss=args.norm_pix_loss, mask_ratio=args.mask_ratio,
                                             weight_decay=args.weight_decay, lr=args.lr, min_lr=args.min_lr,
-                                            warmup_epochs=args.warmup_epochs, img_size=args.input_size)
+                                            warmup_epochs=args.warmup_epochs, img_size=args.input_size,
+                                            total_train_epochs=args.epochs)
 
     trainer = Trainer(accumulate_grad_batches=args.accum_iter, gradient_clip_val=0,
                       logger=[wandb_logger, tb_logger], callbacks=[checkpoint_local_callback],

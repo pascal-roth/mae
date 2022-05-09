@@ -11,22 +11,6 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 
 
-# def adjust_learning_rate(optimizer, epoch, args):
-#     """Decay the learning rate with half-cycle cosine after warmup"""
-#     if epoch < args.warmup_epochs:
-#         lr = args.lr * epoch / args.warmup_epochs
-#     else:
-#         lr = args.min_lr + (args.lr - args.min_lr) * 0.5 * \
-#             (1. + math.cos(math.pi * (epoch - args.warmup_epochs) / (args.epochs - args.warmup_epochs)))
-#     for param_group in optimizer.param_groups:
-#         if "lr_scale" in param_group:
-#             param_group["lr"] = lr * param_group["lr_scale"]
-#         else:
-#             param_group["lr"] = lr
-#     return lr
-
-
-
 class LearningRateScheduler(_LRScheduler):
     r"""
     Provides inteface of learning rate scheduler.
@@ -65,13 +49,15 @@ class WarmupCosLRScheduler(LearningRateScheduler):
             optimizer: Optimizer,
             init_lr: float,
             min_lr: float,
-            warmup_epochs: int
+            warmup_epochs: int,
+            total_epochs: int
     ) -> None:
-        super(WarmupCosLRScheduler, self).__init__(optimizer, init_lr, min_lr, warmup_epochs)
+        super(WarmupCosLRScheduler, self).__init__(optimizer, init_lr)
         self.update_steps = 1
         self.lr = init_lr
         self.min_lr = min_lr
         self.warmup_epochs = warmup_epochs
+        self.epochs = total_epochs
 
     def step(self, epoch, val_loss: Optional[torch.FloatTensor] = None):
         if epoch < self.warmup_epochs:

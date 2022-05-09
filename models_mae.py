@@ -33,7 +33,8 @@ class MaskedAutoencoderViT(pl.LightningModule):
                  embed_dim=1024, depth=24, num_heads=16,
                  decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
                  mlp_ratio=4., norm_layer=nn.LayerNorm, norm_pix_loss=False,
-                 mask_ratio=0.75, weight_decay=0.05, lr=1e-3, min_lr=0, warmup_epochs=40):
+                 mask_ratio=0.75, weight_decay=0.05, lr=1e-3, min_lr=0, warmup_epochs=40,
+                 total_train_epochs: int = 800):
         super().__init__()
 
         # --------------------------------------------------------------------------
@@ -42,6 +43,7 @@ class MaskedAutoencoderViT(pl.LightningModule):
         self.lr: float = lr
         self.min_lr: float = min_lr
         self.warumup_epochs: int = warmup_epochs
+        self.total_train_epochs: int = total_train_epochs
         self.save_hyperparameters()
 
         # eff_batch_size = args.batch_size * args.accum_iter * misc.get_world_size()
@@ -256,7 +258,7 @@ class MaskedAutoencoderViT(pl.LightningModule):
         param_groups = optim_factory.add_weight_decay(self, self.weight_decay)
         optimizer = torch.optim.AdamW(param_groups, lr=self.lr, betas=(0.9, 0.95))
         scheduler = WarmupCosLRScheduler(optimizer, init_lr=self.lr, warmup_epochs=self.warumup_epochs,
-                                         min_lr=self.min_lr)
+                                         min_lr=self.min_lr, total_epochs=self.total_train_epochs)
         return [optimizer], [scheduler]
 
     def lr_scheduler_step(
