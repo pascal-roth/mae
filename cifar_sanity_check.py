@@ -1,21 +1,10 @@
-# Modified by Pascal Roth
-# Email: roth.pascal@outlook.de
-
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
-
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
-# --------------------------------------------------------
-# References:
-# DeiT: https://github.com/facebookresearch/deit
-# BEiT: https://github.com/microsoft/unilm/tree/master/beit
-# --------------------------------------------------------
 import argparse
 import os
 from pathlib import Path
 
+import numpy as np
 import torch
+import torchvision
 from torch.utils.tensorboard import SummaryWriter
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
@@ -27,14 +16,13 @@ from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger, TensorBoardLogger
 from pytorch_lightning.plugins.precision.mixed import MixedPrecisionPlugin
 
-
 def get_args_parser():
     parser = argparse.ArgumentParser('MAE pre-training', add_help=False)
 
     # Model parameters
-    parser.add_argument('--model', default='mae_vit_base_patch16', type=str, metavar='MODEL',
+    parser.add_argument('--model', default='mae_vit_base_cifar', type=str, metavar='MODEL',
                         help='Name of model to train')
-    parser.add_argument('--input_size', default=224, type=int,
+    parser.add_argument('--input_size', default=48, type=int,
                         help='images input size')
     parser.add_argument('--mask_ratio', default=0.75, type=float,
                         help='Masking ratio (percentage of removed patches).')
@@ -98,42 +86,42 @@ def get_args_parser():
 
 def main(args):
     # seed everything
-    seed_everything(args.seed, workers=True)
+    seed_everything(2, workers=True)
 
     # simple augmentation and data loading
     transform_train = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Resize((32 + 20, 32 + 20)),
         transforms.RandomResizedCrop(args.input_size, scale=(0.2, 1.0), interpolation=3),  # 3 is bicubic
         transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=args.pixel_mean, std=args.pixel_std)])
-    dataset_train = datasets.ImageFolder(os.path.join(args.data_path, 'train'), transform=transform_train)
-    # TODO: potentially change val set transforms similar to the one used in main_finetune
-    dataset_val = datasets.ImageFolder(os.path.join(args.data_path, 'val'), transform=transform_train)
-    print(dataset_train)
-    print(dataset_val)
+        # transforms.Normalize(mean=args.pixel_mean, std=args.pixel_std)
+    ])
+    # load cifar10 dataset
+    cifar_data = torchvision.datasets.CIFAR10(os.getcwd() + '/sanity_data/', download=True, transform=transform_train,
+                                              train=True)
 
     if False:  # TODO: for distributed training, still have to test it (and introduce args.distributed):
         sampler_train = torch.utils.data.DistributedSampler(
             dataset_train, num_replicas=args.devices, shuffle=True  # , rank=global_rank
         )
     else:
-        sampler_train = torch.utils.data.RandomSampler(dataset_train)
-        sampler_val = torch.utils.data.RandomSampler(dataset_val)
+        sampler_train = torch.utils.data.RandomSampler(cifar_data)
+        # sampler_val = torch.utils.data.RandomSampler(dataset_val)
 
     data_loader_train = torch.utils.data.DataLoader(
-        dataset_train, sampler=sampler_train,
+        cifar_data, sampler=sampler_train,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         pin_memory=args.pin_mem,
         drop_last=True,
     )
-    data_loader_val = torch.utils.data.DataLoader(
-        dataset_val, sampler=sampler_val,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        pin_memory=args.pin_mem,
-        drop_last=False,
-    )
+    # data_loader_val = torch.utils.data.DataLoader(
+    #     dataset_val, sampler=sampler_val,
+    #     batch_size=args.batch_size,
+    #     num_workers=args.num_workers,
+    #     pin_memory=args.pin_mem,
+    #     drop_last=False,
+    # )
 
     # define LOGGER
     wandb_logger = WandbLogger(
@@ -162,15 +150,16 @@ def main(args):
                                             warmup_epochs=args.warmup_epochs, img_size=args.input_size,
                                             total_train_epochs=args.epochs)
 
-    trainer = Trainer(# accumulate_grad_batches=args.accum_iter, gradient_clip_val=0,
+    trainer = Trainer(accumulate_grad_batches=args.accum_iter, gradient_clip_val=0,
                       logger=[wandb_logger, tb_logger], callbacks=[checkpoint_local_callback, lr_monitor],
                       max_epochs=args.epochs,
                       # strategy="ddp",
                       accelerator="gpu", devices=args.devices,
-                      # plugins=[MixedPrecisionPlugin()], precision=32,  # same as doing the loss_scaler
+                      plugins=[MixedPrecisionPlugin()], precision=32,  # same as doing the loss_scaler
                       )
 
-    trainer.fit(model, train_dataloaders=data_loader_train, val_dataloaders=data_loader_val, ckpt_path=args.ckpt_path)
+    # trainer.fit(model, train_dataloaders=data_loader_train, val_dataloaders=data_loader_val, ckpt_path=args.ckpt_path)
+    trainer.fit(model, train_dataloaders=data_loader_train, ckpt_path=args.ckpt_path)
 
 
 if __name__ == '__main__':

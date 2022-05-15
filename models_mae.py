@@ -125,7 +125,7 @@ class MaskedAutoencoderViT(pl.LightningModule):
         x: (N, L, patch_size**2 *3)
         """
         p = self.patch_embed.patch_size[0]
-        assert imgs.shape[2] == imgs.shape[3] and imgs.shape[2] % p == 0
+        assert imgs.shape[2] == imgs.shape[3] and imgs.shape[2] % p == 0, imgs.shape
 
         h = w = imgs.shape[2] // p
         x = imgs.reshape(shape=(imgs.shape[0], 3, h, p, w, p))
@@ -246,24 +246,28 @@ class MaskedAutoencoderViT(pl.LightningModule):
         return pred, mask
 
     def training_step(self, batch, batch_idx):
-        imgs, _ = batch
+        # imgs, _ = batch
+        imgs = batch[0]  # TODO: remove change after sanity check
         pred, mask = self.forward(imgs)
         loss = self.forward_loss(imgs, pred, mask)
         self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         return loss
 
-    def validation_step(self, batch, batch_idx):
-        imgs, _ = batch
-        pred, mask = self.forward(imgs)
-        loss = self.forward_loss(imgs, pred, mask)
-        self.log("val_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+    # TODO: remove change after sanity
+    # def validation_step(self, batch, batch_idx):
+    #     imgs = batch  # TODO: remove check after sanity
+    #     pred, mask = self.forward(imgs)
+    #     loss = self.forward_loss(imgs, pred, mask)
+    #     self.log("val_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
 
     def configure_optimizers(self):
         param_groups = optim_factory.add_weight_decay(self, self.weight_decay)
         optimizer = torch.optim.AdamW(param_groups, lr=self.lr, betas=(0.9, 0.95))
+        # optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr, betas=(0.9, 0.95))
         scheduler = WarmupCosLRScheduler(optimizer, init_lr=self.lr, warmup_epochs=self.warumup_epochs,
                                          min_lr=self.min_lr, total_epochs=self.total_train_epochs)
-        return [optimizer], [scheduler]
+        # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
+        return {"optimizer": optimizer, "lr_scheduler": scheduler}  # , "monitor": "val_loss"}
 
     def lr_scheduler_step(
         self,
@@ -297,8 +301,15 @@ def mae_vit_huge_patch14_dec512d8b(**kwargs):
         mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
     return model
 
+def mae_vit_base_patch6_cifar(**kwargs):
+    model = MaskedAutoencoderViT(
+        patch_size=6, embed_dim=128, depth=6, num_heads=4,
+        decoder_embed_dim=64, decoder_depth=2, decoder_num_heads=4,
+        mlp_ratio=2, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+    return model
 
 # set recommended archs
 mae_vit_base_patch16 = mae_vit_base_patch16_dec512d8b  # decoder: 512 dim, 8 blocks
 mae_vit_large_patch16 = mae_vit_large_patch16_dec512d8b  # decoder: 512 dim, 8 blocks
 mae_vit_huge_patch14 = mae_vit_huge_patch14_dec512d8b  # decoder: 512 dim, 8 blocks
+mae_vit_base_cifar = mae_vit_base_patch6_cifar

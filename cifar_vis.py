@@ -29,20 +29,20 @@ def get_parser():
     parser = argparse.ArgumentParser(description="MAE Visualizer")
     parser.add_argument(
         "--model", "-m",
-        default='mae_vit_base_patch16',
+        default='mae_vit_base_cifar',
         help='model name'
     )
     parser.add_argument(
-        "--path",
+        "--ckpt",
         default="output_mae_base/checkpoints/last.ckpt",
-        help="path to model ckpt or weight pth file",
+        help="path to model ckpt",
     )
-    parser.add_argument(
-        "--input",
-        nargs="+",
-        help="A list of space separated input images; "
-             "or a single glob pattern such as 'directory/*.jpg'",
-    )
+    # parser.add_argument(
+    #     "--input",
+    #     nargs="+",
+    #     help="A list of space separated input images; "
+    #          "or a single glob pattern such as 'directory/*.jpg'",
+    # )
     parser.add_argument(
         "--output",
         help="A file or directory to save output visualizations. "
@@ -56,24 +56,10 @@ def get_parser():
     return parser
 
 
-def read_image(path: str):
-    assert os.path.isfile(path), f'Given path does not lead to image. Path is "{path}"'
-    img = Image.open(path)
-    img = img.resize((224, 224))
-    img = np.array(img) / 255.
-
-    assert img.shape == (224, 224, 3)
-
-    # normalize by ImageNet mean and std
-    img = img - _COCO_MEAN
-    img = img / _COCO_STD
-    return img
-
-
 def show_image(ax: plt.Axes, image: torch.Tensor, title: str = '') -> None:
     # image is [H, W, 3]
     assert image.shape[2] == 3
-    ax.imshow(torch.clip((image * _COCO_STD + _COCO_MEAN) * 255, 0, 255).int())
+    ax.imshow(torch.clip(image * 255, 0, 255).int())
     ax.set_title(title, fontsize=16)
     ax.axis('off')
 
@@ -85,7 +71,6 @@ def prepare_model(path: str, arch: str):
     if path.endswith('.ckpt'):
         model = model_cls.load_from_checkpoint(path, map_location='cpu')
     elif path.endswith('.pth'):
-        state_dict = torch.load(path)
         model_cls.load_state_dict(torch.load(path, map_location='cpu')['model'], strict=False)
         model = model_cls
     else:
@@ -144,22 +129,29 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
 
     # load model
-    model_mae = prepare_model(args.path, args.model)
+    model_mae = prepare_model(args.ckpt, args.model)
+
+    # load cifar
+    import torchvision
+    cifar_data = torchvision.datasets.CIFAR10(os.getcwd() + '/sanity_data/', download=True)
+    imgs = cifar_data.data[:10]
 
     # run visualizer
-    if len(args.input) == 1:
-        args.input = glob.glob(os.path.expanduser(args.input[0]))
-        assert args.input, "The input path(s) was not found"
-    for path in tqdm.tqdm(args.input, disable=not args.output):
+    # if len(args.input) == 1:
+    #     args.input = glob.glob(os.path.expanduser(args.input[0]))
+    #     assert args.input, "The input path(s) was not found"
+    for idx, img in enumerate(tqdm.tqdm(imgs)):
         # use PIL, to be consistent with evaluation
-        img = read_image(path)
         start_time = time.time()
         print("Image Shape:")
         print(img.shape)
+        img = Image.fromarray(img)
+        img = img.resize((48, 48))
+        img = np.array(img) / 255.
         fig = run_one_image(img, model_mae)
         _logger.info(
             "{}: finished in {:.2f}s".format(
-                path,
+                idx,
                 time.time() - start_time,
             )
         )
@@ -167,7 +159,7 @@ if __name__ == "__main__":
         if args.output:
             if os.path.isdir(args.output):
                 assert os.path.isdir(args.output), args.output
-                out_filename = os.path.join(args.output, os.path.basename(path))
+                out_filename = os.path.join(args.output, f'{idx}')
             else:
                 assert len(args.input) == 1, "Please specify a directory with args.output"
                 out_filename = args.output
