@@ -41,13 +41,21 @@ class MaskedAutoencoderVicReg(MaskedAutoencoderViT):
                  warmup_epochs=40,
                  total_train_epochs: int = 400,
                  weight_mae_loss: float = 0.5,
-                 weight_vic_loss: float = 0.5):
+                 weight_vic_loss: float = 0.5,
+                 sim_coeff: float = 25.0,
+                 std_coeff: float = 25.0,
+                 cov_coeff: float = 1.0,
+                 batch_size: int = 64):
         super().__init__(img_size, patch_size, in_chans, embed_dim, depth, num_heads, decoder_embed_dim,
                          decoder_depth, decoder_num_heads, mlp_ratio, norm_layer, norm_pix_loss, mask_ratio,
                          weight_decay, lr, min_lr, warmup_epochs, total_train_epochs)
 
         self.weight_mae_loss: float = weight_mae_loss
         self.weight_vic_loss: float = weight_vic_loss
+        self.sim_coeff: float = sim_coeff
+        self.std_coeff: float = std_coeff
+        self.cov_coeff: float = cov_coeff
+        self.batch_size: int = batch_size
         assert self.weight_mae_loss + self.weight_vic_loss == 1, 'Loss weights have to add up to 1'
 
     def forward_vicloss(self, x, y):
@@ -56,25 +64,24 @@ class MaskedAutoencoderVicReg(MaskedAutoencoderViT):
         """
         repr_loss = torch.nn.functional.mse_loss(x, y)
 
-        x = torch.cat(FullGatherLayer.apply(x), dim=0)  # if necessary to use it, first call init_distributed_mode(args) with args include world_size, local_rank, dist-url
+        x = torch.cat(FullGatherLayer.apply(x), dim=0)  # if necessary to use it, first call init_distributed_mode(args) with args include world_size, local_rank, dist-url, should work normally with pl trainer
         y = torch.cat(FullGatherLayer.apply(y), dim=0)
         x = x - x.mean(dim=0)
         y = y - y.mean(dim=0)
 
         std_x = torch.sqrt(x.var(dim=0) + 0.0001)
         std_y = torch.sqrt(y.var(dim=0) + 0.0001)
-        std_loss = torch.mean(torch.nn.functional.relu(1 - std_x)) / 2 + torch.mean(F.relu(1 - std_y)) / 2
+        std_loss = torch.mean(torch.nn.functional.relu(1 - std_x)) / 2 + torch.mean(torch.nn.functional.relu(1 - std_y)) / 2
 
-        cov_x = (x.T @ x) / (self.args.batch_size - 1)
-        cov_y = (y.T @ y) / (self.args.batch_size - 1)
+        cov_x = (x.T @ x) / (self.batch_size - 1)
+        cov_y = (y.T @ y) / (self.batch_size - 1)
         cov_loss = off_diagonal(cov_x).pow_(2).sum().div(
             self.num_features
         ) + off_diagonal(cov_y).pow_(2).sum().div(self.num_features)
 
-        loss = (
-                self.args.sim_coeff * repr_loss
-                + self.args.std_coeff * std_loss
-                + self.args.cov_coeff * cov_loss
+        loss = (self.sim_coeff * repr_loss
+                + self.std_coeff * std_loss
+                + self.cov_coeff * cov_loss
         )
         return loss
 

@@ -71,8 +71,6 @@ def get_args_parser():
     parser.add_argument('--seed', default=0, type=int)
     parser.add_argument('--ckpt_path', default=None,
                         help='ckpt_path to resume training from')
-    parser.add_argument('--vic', action='store_false',
-                        help='Activate VicReg Loss')
 
     # Wandb Parameters
     parser.add_argument('--wb-name', type=str, default='mae',
@@ -100,6 +98,19 @@ def get_args_parser():
     parser.add_argument('--pixel_std', default=IMAGE_STD,
                         help='Inputs are normalized with this std (default is the one from params.py)')
 
+    # Variance-Invariance-Covariance Loss Parameters
+    parser.add_argument('--vic', action='store_false',
+                        help='Activate VicReg Loss')
+    parser.add_argument("--sim-coeff", type=float, default=25.0,
+                        help='Invariance regularization loss coefficient')
+    parser.add_argument("--std-coeff", type=float, default=25.0,
+                        help='Variance regularization loss coefficient')
+    parser.add_argument("--cov-coeff", type=float, default=1.0,
+                        help='Covariance regularization loss coefficient')
+    parser.add_argument("--weight-mae", type=float, default=0.5,
+                        help='Weight for MAE loss')
+    parser.add_argument("--weight-vic", type=float, default=0.5,
+                        help='Weight for VIC loss')
     return parser
 
 
@@ -169,12 +180,13 @@ def main(args):
 
     # define the model
     if args.vic:
-        model = models_vicreg.__dict__[args.model + '_vic'](norm_pix_loss=args.norm_pix_loss,
-                                                            mask_ratio=args.mask_ratio,
+        model = models_vicreg.__dict__[args.model + '_vic'](norm_pix_loss=args.norm_pix_loss, batch_size=args.batch_size,
+                                                            mask_ratio=args.mask_ratio, min_lr=args.min_lr,
                                                             weight_decay=args.weight_decay, lr=args.lr,
-                                                            min_lr=args.min_lr,
                                                             warmup_epochs=args.warmup_epochs, img_size=args.input_size,
-                                                            total_train_epochs=args.epochs)
+                                                            total_train_epochs=args.epochs, weight_mae_loss=args.weight_mae,
+                                                            weight_vic_loss=args.weight_vic, sim_coeff=args.sim_coeff, 
+                                                            std_coeff=args.std_coeff, cov_coeff=args.cov_coeff)
     else:
         model = models_mae.__dict__[args.model](norm_pix_loss=args.norm_pix_loss, mask_ratio=args.mask_ratio,
                                                 weight_decay=args.weight_decay, lr=args.lr, min_lr=args.min_lr,
