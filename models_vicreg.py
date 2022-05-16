@@ -58,10 +58,16 @@ class MaskedAutoencoderVicReg(MaskedAutoencoderViT):
         self.batch_size: int = batch_size
         assert self.weight_mae_loss + self.weight_vic_loss == 1, 'Loss weights have to add up to 1'
 
+        # projector for embedding to feed to vicloss
+        # self.projector = Projector(args, embed_dim)
+
     def forward_vicloss(self, x, y):
         """
         embedding of x_vector
         """
+        x = torch.flatten(x)
+        y = torch.flatten(y)
+
         repr_loss = torch.nn.functional.mse_loss(x, y)
 
         x = torch.cat(FullGatherLayer.apply(x), dim=0)  # if necessary to use it, first call init_distributed_mode(args) with args include world_size, local_rank, dist-url, should work normally with pl trainer
@@ -76,8 +82,8 @@ class MaskedAutoencoderVicReg(MaskedAutoencoderViT):
         cov_x = (x.T @ x) / (self.batch_size - 1)
         cov_y = (y.T @ y) / (self.batch_size - 1)
         cov_loss = off_diagonal(cov_x).pow_(2).sum().div(
-            self.num_features
-        ) + off_diagonal(cov_y).pow_(2).sum().div(self.num_features)
+            self.embed_dim
+        ) + off_diagonal(cov_y).pow_(2).sum().div(self.embed_dim)
 
         loss = (self.sim_coeff * repr_loss
                 + self.std_coeff * std_loss
@@ -133,6 +139,18 @@ class MaskedAutoencoderVicReg(MaskedAutoencoderViT):
         metric: Optional[Any],
     ) -> None:
         scheduler.step(epoch=self.current_epoch)
+
+
+# def Projector(mlp, embedding):
+#     mlp_spec = f"{embedding}-{mlp}"
+#     layers = []
+#     f = list(map(int, mlp_spec.split("-")))
+#     for i in range(len(f) - 2):
+#         layers.append(nn.Linear(f[i], f[i + 1]))
+#         layers.append(nn.BatchNorm1d(f[i + 1]))
+#         layers.append(nn.ReLU(True))
+#     layers.append(nn.Linear(f[-2], f[-1], bias=False))
+#     return nn.Sequential(*layers)
 
 
 def mae_vit_base_patch16_vic(**kwargs):
