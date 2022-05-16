@@ -98,9 +98,10 @@ class MaskedAutoencoderVicReg(MaskedAutoencoderViT):
 
     def training_step(self, batch, batch_idx):
         imgs, _ = batch
-        torch.manual_seed(0)  # use torch.manual_seed to ensure that for both augmentations the same mask is produced
+        rand_mask_int = torch.randint(low=0, high=10000)
+        torch.manual_seed(rand_mask_int)  # use torch.manual_seed to ensure that for both augmentations the same mask is produced
         pred_1, mask_1, embed_1 = self.forward(imgs[0])
-        torch.manual_seed(0)
+        torch.manual_seed(rand_mask_int)
         pred_2, mask_2, embed_2 = self.forward(imgs[1])
         loss_mae_1 = self.forward_loss(imgs[0], pred_1, mask_1)
         loss_mae_2 = self.forward_loss(imgs[1], pred_2, mask_2)
@@ -114,7 +115,10 @@ class MaskedAutoencoderVicReg(MaskedAutoencoderViT):
 
     def validation_step(self, batch, batch_idx):
         imgs, _ = batch
+        rand_mask_int = torch.randint(low=0, high=10000)
+        torch.manual_seed(rand_mask_int)
         pred_1, mask_1, embed_1 = self.forward(imgs[0])
+        torch.manual_seed(rand_mask_int)
         pred_2, mask_2, embed_2 = self.forward(imgs[1])
         loss_mae_1 = self.forward_loss(imgs[0], pred_1, mask_1)
         loss_mae_2 = self.forward_loss(imgs[1], pred_2, mask_2)
