@@ -65,8 +65,8 @@ class MaskedAutoencoderVicReg(MaskedAutoencoderViT):
         """
         embedding of x_vector
         """
-        x = torch.flatten(x)
-        y = torch.flatten(y)
+        x = torch.flatten(x, start_dim=1)
+        y = torch.flatten(y, start_dim=1)
 
         repr_loss = torch.nn.functional.mse_loss(x, y)
 

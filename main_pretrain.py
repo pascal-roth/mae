@@ -196,7 +196,7 @@ def main(args):
     trainer = Trainer(accumulate_grad_batches=args.accum_iter, gradient_clip_val=0,
                       logger=[wandb_logger, tb_logger], callbacks=[checkpoint_local_callback, lr_monitor],
                       max_epochs=args.epochs,
-                      # strategy="ddp", accelerator="gpu", devices=args.devices,
+                      strategy="ddp", accelerator="gpu", devices=[args.devices],
                       plugins=[MixedPrecisionPlugin()], precision=32,  # same as doing the loss_scaler
                       )
 
