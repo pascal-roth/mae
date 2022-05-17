@@ -12,6 +12,7 @@
 from tkinter import image_types
 from PIL import ImageOps, ImageFilter
 import numpy as np
+import torch
 import torchvision.transforms as transforms
 from torchvision.transforms import InterpolationMode
 
@@ -44,11 +45,11 @@ class Solarization(object):
 
 class TrainTransform(object):
     def __init__(self):
+        self.transform_base = transforms.RandomResizedCrop(
+                    224, interpolation=InterpolationMode.BICUBIC
+                )
         self.transform = transforms.Compose(
             [
-                transforms.RandomResizedCrop(
-                    224, interpolation=InterpolationMode.BICUBIC
-                ),
                 transforms.RandomHorizontalFlip(p=0.5),
                 transforms.RandomApply(
                     [
@@ -69,9 +70,6 @@ class TrainTransform(object):
         )
         self.transform_prime = transforms.Compose(
             [
-                transforms.RandomResizedCrop(
-                    224, interpolation=InterpolationMode.BICUBIC
-                ),
                 transforms.RandomHorizontalFlip(p=0.5),
                 transforms.RandomApply(
                     [
@@ -92,6 +90,12 @@ class TrainTransform(object):
         )
 
     def __call__(self, sample):
-        x1 = self.transform(sample)
-        x2 = self.transform_prime(sample)
+        # make base transform equally for each image --> manual_seed
+        rand_mask_int = torch.randint(low=0, high=10000, size=(1,)) 
+        torch.manual_seed(0)
+        sample_base = self.transform_base(sample)
+        # further augmentation has to be made randomly for each image
+        torch.random.seed()
+        x1 = self.transform(sample_base)
+        x2 = self.transform_prime(sample_base)
         return x1, x2

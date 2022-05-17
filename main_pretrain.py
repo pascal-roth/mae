@@ -81,7 +81,7 @@ def get_args_parser():
                         help='Entity name for Weights and Biases')
 
     # Dataoader parameters
-    parser.add_argument('--batch_size', default=1, type=int,
+    parser.add_argument('--batch_size', default=32, type=int,
                         help='Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus')
     parser.add_argument('--data_path', default='./self_sup_seg/data/dataset_unlabeled', type=str,
                         help='dataset path')
@@ -130,9 +130,9 @@ def main(args):
 
     dataset_train = datasets.ImageFolder(os.path.join(args.data_path, 'train'), transform=transform_train)
     # TODO: potentially change val set transforms similar to the one used in main_finetune
-    # dataset_val = datasets.ImageFolder(os.path.join(args.data_path, 'val'), transform=transform_train)
+    dataset_val = datasets.ImageFolder(os.path.join(args.data_path, 'val'), transform=transform_train)
     print(dataset_train)
-    # print(dataset_val)
+    print(dataset_val)
 
     if False:  # TODO: for distributed training, still have to test it (and introduce args.distributed):
         sampler_train = torch.utils.data.DistributedSampler(
@@ -140,7 +140,7 @@ def main(args):
         )
     else:
         sampler_train = torch.utils.data.RandomSampler(dataset_train)
-        # sampler_val = torch.utils.data.RandomSampler(dataset_val)
+        sampler_val = torch.utils.data.RandomSampler(dataset_val)
 
     data_loader_train = torch.utils.data.DataLoader(
         dataset_train, sampler=sampler_train,
@@ -149,13 +149,13 @@ def main(args):
         pin_memory=args.pin_mem,
         drop_last=True,
     )
-    # data_loader_val = torch.utils.data.DataLoader(
-    #     dataset_val, sampler=sampler_val,
-    #     batch_size=args.batch_size,
-    #     num_workers=args.num_workers,
-    #     pin_memory=args.pin_mem,
-    #     drop_last=False,
-    # )
+    data_loader_val = torch.utils.data.DataLoader(
+        dataset_val, sampler=sampler_val,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        pin_memory=args.pin_mem,
+        drop_last=False,
+    )
 
     # define LOGGER
     wandb_logger = WandbLogger(
@@ -196,12 +196,12 @@ def main(args):
     trainer = Trainer(accumulate_grad_batches=args.accum_iter, gradient_clip_val=0,
                       logger=[wandb_logger, tb_logger], callbacks=[checkpoint_local_callback, lr_monitor],
                       max_epochs=args.epochs,
-                      strategy="ddp", accelerator="gpu", devices=[args.devices],
+                      strategy="ddp", accelerator="gpu", devices=args.devices,
                       plugins=[MixedPrecisionPlugin()], precision=32,  # same as doing the loss_scaler
                       )
 
-    trainer.fit(model, train_dataloaders=data_loader_train, ckpt_path=args.ckpt_path)
-    # trainer.fit(model, train_dataloaders=data_loader_train, val_dataloaders=data_loader_val, ckpt_path=args.ckpt_path)
+    # trainer.fit(model, train_dataloaders=data_loader_train, ckpt_path=args.ckpt_path)
+    trainer.fit(model, train_dataloaders=data_loader_train, val_dataloaders=data_loader_val, ckpt_path=args.ckpt_path)
 
 
 if __name__ == '__main__':

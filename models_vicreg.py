@@ -40,8 +40,8 @@ class MaskedAutoencoderVicReg(MaskedAutoencoderViT):
                  min_lr=0,
                  warmup_epochs=40,
                  total_train_epochs: int = 400,
-                 weight_mae_loss: float = 0.5,
-                 weight_vic_loss: float = 0.5,
+                 weight_mae_loss: float = 0.75,
+                 weight_vic_loss: float = 0.25,
                  sim_coeff: float = 25.0,
                  std_coeff: float = 25.0,
                  cov_coeff: float = 1.0,
@@ -58,29 +58,28 @@ class MaskedAutoencoderVicReg(MaskedAutoencoderViT):
         self.batch_size: int = batch_size
         assert self.weight_mae_loss + self.weight_vic_loss == 1, 'Loss weights have to add up to 1'
 
-        # projector for embedding to feed to vicloss
-        # self.projector = Projector(args, embed_dim)
+        self.embed_dim: int = embed_dim
 
     def forward_vicloss(self, x, y):
         """
         embedding of x_vector
         """
-        x = torch.flatten(x, start_dim=1)
-        y = torch.flatten(y, start_dim=1)
-
+        # x.shape = [BATCH_SIZE, NUMBER_PATCHES, EMBED_DIM]
         repr_loss = torch.nn.functional.mse_loss(x, y)
 
-        x = torch.cat(FullGatherLayer.apply(x), dim=0)  # if necessary to use it, first call init_distributed_mode(args) with args include world_size, local_rank, dist-url, should work normally with pl trainer
+        x = torch.cat(FullGatherLayer.apply(x), dim=0)  # only if distributed training is activated
         y = torch.cat(FullGatherLayer.apply(y), dim=0)
-        x = x - x.mean(dim=0)
-        y = y - y.mean(dim=0)
+        x = x - x.mean(dim=(0,1))  # mean along each dimension, i.e. mean over batch and patches
+        y = y - y.mean(dim=(0,1))
 
-        std_x = torch.sqrt(x.var(dim=0) + 0.0001)
-        std_y = torch.sqrt(y.var(dim=0) + 0.0001)
+        std_x = torch.sqrt(x.var(dim=(0,1)) + 0.0001)  # variance along each dimension, i.e. var over batch and patches
+        std_y = torch.sqrt(y.var(dim=(0,1)) + 0.0001)
         std_loss = torch.mean(torch.nn.functional.relu(1 - std_x)) / 2 + torch.mean(torch.nn.functional.relu(1 - std_y)) / 2
 
-        cov_x = (x.T @ x) / (self.batch_size - 1)
-        cov_y = (y.T @ y) / (self.batch_size - 1)
+        flat_x = torch.flatten(x, start_dim=0, end_dim=1)  # flatten input vecor, s.t. flat_x.shape = [BATCH_SIZE * NUMBER_PATCHES, EMBED_DIM]
+        flat_y = torch.flatten(y, start_dim=0, end_dim=1)
+        cov_x = (flat_x.T @ flat_x) / (self.batch_size + x.shape[1] - 1)  # batches and patches are traited equally, thus here normalized with both
+        cov_y = (flat_y.T @ flat_y) / (self.batch_size + x.shape[1] - 1)
         cov_loss = off_diagonal(cov_x).pow_(2).sum().div(
             self.embed_dim
         ) + off_diagonal(cov_y).pow_(2).sum().div(self.embed_dim)
@@ -98,7 +97,7 @@ class MaskedAutoencoderVicReg(MaskedAutoencoderViT):
 
     def training_step(self, batch, batch_idx):
         imgs, _ = batch
-        rand_mask_int = torch.randint(low=0, high=10000)
+        rand_mask_int = torch.randint(low=0, high=10000, size=(1,))
         torch.manual_seed(rand_mask_int)  # use torch.manual_seed to ensure that for both augmentations the same mask is produced
         pred_1, mask_1, embed_1 = self.forward(imgs[0])
         torch.manual_seed(rand_mask_int)
@@ -115,7 +114,7 @@ class MaskedAutoencoderVicReg(MaskedAutoencoderViT):
 
     def validation_step(self, batch, batch_idx):
         imgs, _ = batch
-        rand_mask_int = torch.randint(low=0, high=10000)
+        rand_mask_int = torch.randint(low=0, high=10000, size=(1,))
         torch.manual_seed(rand_mask_int)
         pred_1, mask_1, embed_1 = self.forward(imgs[0])
         torch.manual_seed(rand_mask_int)
