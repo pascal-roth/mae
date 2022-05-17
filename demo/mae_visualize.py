@@ -12,6 +12,7 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from PIL import Image
+import requests
 
 # import scripts
 import self_sup_seg.third_party.mae.models_mae as models_mae
@@ -29,7 +30,7 @@ def get_parser():
     parser = argparse.ArgumentParser(description="MAE Visualizer")
     parser.add_argument(
         "--model", "-m",
-        default='mae_vit_base_patch16',
+        default='mae_vit_large_patch16',
         help='model name'
     )
     parser.add_argument(
@@ -40,8 +41,10 @@ def get_parser():
     parser.add_argument(
         "--input",
         nargs="+",
+        default = None,
         help="A list of space separated input images; "
-             "or a single glob pattern such as 'directory/*.jpg'",
+             "or a single glob pattern such as 'directory/*.jpg'."
+             "If not given, will take example image",
     )
     parser.add_argument(
         "--output",
@@ -57,8 +60,13 @@ def get_parser():
 
 
 def read_image(path: str):
-    assert os.path.isfile(path), f'Given path does not lead to image. Path is "{path}"'
-    img = Image.open(path)
+    if path:
+        assert os.path.isfile(path), f'Given path does not lead to image. Path is "{path}"'
+        img = Image.open(path)
+    else:
+        img_url = 'https://user-images.githubusercontent.com/11435359/147738734-196fd92f-9260-48d5-ba7e-bf103d29364d.jpg' # fox, from ILSVRC2012_val_00046145
+        # img_url = 'https://user-images.githubusercontent.com/11435359/147743081-0428eecf-89e5-4e07-8da5-a30fd73cc0ba.jpg' # cucumber, from ILSVRC2012_val_00047851
+        img = Image.open(requests.get(img_url, stream=True).raw)
     img = img.resize((224, 224))
     img = np.array(img) / 255.
 
@@ -85,8 +93,8 @@ def prepare_model(path: str, arch: str):
     if path.endswith('.ckpt'):
         model = model_cls.load_from_checkpoint(path, map_location='cpu')
     elif path.endswith('.pth'):
-        state_dict = torch.load(path)
-        model_cls.load_state_dict(torch.load(path, map_location='cpu')['model'], strict=False)
+        msg = model_cls.load_state_dict(torch.load(path, map_location='cpu')['model'], strict=False)
+        print(msg)
         model = model_cls
     else:
         raise FileNotFoundError(f'Under given path no checkpoint and no model weights found. Path is \n{path}')
@@ -139,27 +147,24 @@ def run_one_image(img: np.array, model):
     return fig
 
 
-if __name__ == "__main__":
-    args = get_parser().parse_args()
-    torch.manual_seed(args.seed)
-
-    # load model
-    model_mae = prepare_model(args.path, args.model)
-
+def run_visualizer(args, model, name_extension: str = None):
     # run visualizer
-    if len(args.input) == 1:
+    if args.input and len(args.input) == 1:
         args.input = glob.glob(os.path.expanduser(args.input[0]))
         assert args.input, "The input path(s) was not found"
+    elif not args.input: 
+        args.input = [None]
+
     for path in tqdm.tqdm(args.input, disable=not args.output):
         # use PIL, to be consistent with evaluation
         img = read_image(path)
         start_time = time.time()
         print("Image Shape:")
         print(img.shape)
-        fig = run_one_image(img, model_mae)
+        fig = run_one_image(img, model)
         _logger.info(
             "{}: finished in {:.2f}s".format(
-                path,
+                path if path else 'Example',
                 time.time() - start_time,
             )
         )
@@ -167,7 +172,7 @@ if __name__ == "__main__":
         if args.output:
             if os.path.isdir(args.output):
                 assert os.path.isdir(args.output), args.output
-                out_filename = os.path.join(args.output, os.path.basename(path))
+                out_filename = os.path.join(args.output, os.path.basename(path)) if path else os.path.join(args.output, 'example_image.png')
             else:
                 assert len(args.input) == 1, "Please specify a directory with args.output"
                 out_filename = args.output
@@ -176,9 +181,48 @@ if __name__ == "__main__":
             if file_extension == '.jpg':
                 out_filename = filename + '.png'
 
+            if name_extension:
+                out_filename = filename + name_extension + '.png'
+
             plt.savefig(out_filename, bbox_inches='tight')
         else:
             plt.show()
             assert len(args.input) == 1, "Please specify a directory with args.output, only first output shown now" \
                                          "rest will not be calculated"
+        plt.close()
 
+
+if __name__ == "__main__":
+    args = get_parser().parse_args()
+    torch.manual_seed(args.seed)
+
+    # load model
+    if True:
+        model = prepare_model(args.path, args.model)
+        run_visualizer(args, model)
+
+    else:
+        torch.manual_seed(args.seed)
+        args.input = None
+        model_full = prepare_model('/media/pascal/TOSHIBA EXT/ETH/mae_pretrain_vit_large_full.pth', args.model)
+        run_visualizer(args, model_full, name_extension='_full')
+        
+        torch.manual_seed(args.seed)
+        args.input = None
+        model_demo = prepare_model('/media/pascal/TOSHIBA EXT/ETH/mae_visualize_vit_large.pth', args.model)  
+        run_visualizer(args, model_demo, name_extension='_demo')
+        
+        torch.manual_seed(args.seed)
+        args.input = None
+        model_fine = prepare_model('/media/pascal/TOSHIBA EXT/ETH/mae_finetuned_vit_large.pth', args.model)  # decoder weights are missing
+        run_visualizer(args, model_fine, name_extension='_fine')
+
+        torch.manual_seed(args.seed)
+        args.input=None
+        model_gan  = prepare_model('/media/pascal/TOSHIBA EXT/ETH/mae_visualize_vit_large_ganloss.pth', args.model)
+        run_visualizer(args, model_gan,  name_extension='_gan')
+
+        torch.manual_seed(args.seed)
+        args.input = None
+        model_mae  = prepare_model('/home/pascal/ETH/2_semester/project/mae_pretrain_vit_large.pth', args.model)  # decoder weights are missing
+        run_visualizer(args, model_mae,  name_extension='_mae')
