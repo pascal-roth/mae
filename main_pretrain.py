@@ -22,6 +22,7 @@ import torchvision.datasets as datasets
 
 import self_sup_seg.third_party.mae.models_mae as models_mae
 import self_sup_seg.third_party.mae.models_vicreg as models_vicreg
+import self_sup_seg.third_party.mae.models_swin as models_swin
 from self_sup_seg.third_party.mae.vicreg.augmentation import TrainTransform
 
 from pytorch_lightning import Trainer, seed_everything
@@ -37,7 +38,7 @@ def get_args_parser():
     parser = argparse.ArgumentParser('MAE pre-training', add_help=False)
 
     # Model parameters
-    parser.add_argument('--model', default='mae_vit_base_patch16', type=str, metavar='MODEL',
+    parser.add_argument('--model', default='mae_swin_t', type=str, metavar='MODEL',
                         help='Name of model to train')
     parser.add_argument('--input_size', default=224, type=int,
                         help='images input size')
@@ -46,6 +47,10 @@ def get_args_parser():
     parser.add_argument('--norm_pix_loss', action='store_true',
                         help='Use (per-patch) normalized pixels as targets for computing loss')
     parser.set_defaults(norm_pix_loss=False)
+    parser.add_argument('--swin', action='store_false',
+                        help='decide if swin architecture should be used')
+    parser.add_argument('--pretrain', default='./self_sup_seg/models/mae_pytorch/swin_tiny_patch4_window7_224.pth', 
+                        type=str, help='path to pre-trained model weight (only use weights from original repo)')
 
     # Optimizer parameters
     parser.add_argument('--weight_decay', type=float, default=0.05,
@@ -99,7 +104,7 @@ def get_args_parser():
                         help='Inputs are normalized with this std (default is the one from params.py)')
 
     # Variance-Invariance-Covariance Loss Parameters
-    parser.add_argument('--vic', action='store_false',
+    parser.add_argument('--vic', action='store_true',
                         help='Activate VicReg Loss')
     parser.add_argument("--sim-coeff", type=float, default=25.0,
                         help='Invariance regularization loss coefficient')
@@ -187,16 +192,22 @@ def main(args):
                                                             total_train_epochs=args.epochs, weight_mae_loss=args.weight_mae,
                                                             weight_vic_loss=args.weight_vic, sim_coeff=args.sim_coeff, 
                                                             std_coeff=args.std_coeff, cov_coeff=args.cov_coeff)
+    elif args.swin:
+        model = models_swin.__dict__[args.model](norm_pix_loss=args.norm_pix_loss, mask_ratio=args.mask_ratio,
+                                                 weight_decay=args.weight_decay, lr=args.lr, min_lr=args.min_lr,
+                                                 warmup_epochs=args.warmup_epochs, img_size=args.input_size,
+                                                 total_train_epochs=args.epochs, pretrain_path=args.pretrain)
     else:
         model = models_mae.__dict__[args.model](norm_pix_loss=args.norm_pix_loss, mask_ratio=args.mask_ratio,
                                                 weight_decay=args.weight_decay, lr=args.lr, min_lr=args.min_lr,
                                                 warmup_epochs=args.warmup_epochs, img_size=args.input_size,
                                                 total_train_epochs=args.epochs)
 
-    trainer = Trainer(# accumulate_grad_batches=args.accum_iter, gradient_clip_val=0,
-                      logger=[wandb_logger, tb_logger], callbacks=[checkpoint_local_callback, lr_monitor],
+    trainer = Trainer(accumulate_grad_batches=args.accum_iter, gradient_clip_val=0,
+                      logger=[wandb_logger, tb_logger], 
+                      callbacks=[checkpoint_local_callback, lr_monitor],
                       max_epochs=args.epochs,
-                      # strategy="ddp",
+                      strategy="ddp",
                       accelerator="gpu", devices=args.devices,
                       # plugins=[MixedPrecisionPlugin()], precision=32,  # same as doing the loss_scaler
                       )
@@ -210,4 +221,5 @@ if __name__ == '__main__':
     args = args.parse_args()
     if args.output_dir:
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+    print(args)
     main(args)
