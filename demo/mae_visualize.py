@@ -16,11 +16,10 @@ import requests
 
 # import scripts
 import self_sup_seg.third_party.mae.models_mae as models_mae
+import self_sup_seg.third_party.mae.models_vicreg as models_vicreg
+import self_sup_seg.third_party.mae.models_swin as models_swin
+from self_sup_seg.third_party.mae.params import IMAGE_MEAN, IMAGE_STD
 from self_sup_seg.utils.logger import _logger
-
-# define some local parameters
-_COCO_MEAN = np.array([0.485, 0.456, 0.406])  # (IMAGENET) np.array([123.675, 116.280, 103.530])  # (COCO)
-_COCO_STD = np.array([0.229, 0.224, 0.225])  # (IMAGENET) np.array([58.395, 57.120, 57.375])  # (COCO)
 
 # necessary to run it on the cluster
 matplotlib.use('Agg')
@@ -30,12 +29,12 @@ def get_parser():
     parser = argparse.ArgumentParser(description="MAE Visualizer")
     parser.add_argument(
         "--model", "-m",
-        default='mae_vit_large_patch16',
+        default='mae_swin_t',
         help='model name'
     )
     parser.add_argument(
         "--path",
-        default="output_mae_base/checkpoints/last.ckpt",
+        default="output_mae_swin/checkpoints/last.ckpt",
         help="path to model ckpt or weight pth file",
     )
     parser.add_argument(
@@ -48,6 +47,7 @@ def get_parser():
     )
     parser.add_argument(
         "--output",
+        default="output_mae_swin",
         help="A file or directory to save output visualizations. "
              "If not given, will show output in an OpenCV window.",
     )
@@ -56,6 +56,16 @@ def get_parser():
         default=2,
         help='Random seed to make masking reproducable'
     )
+    parser.add_argument(
+        '--swin', 
+        action='store_false',
+        help='decide if swin architecture should be used'
+    )
+    parser.add_argument(
+        '--vic', 
+        action='store_true',
+        help='Activate VicReg Loss (only for ViT Models)'
+    )   
     return parser
 
 
@@ -73,22 +83,28 @@ def read_image(path: str):
     assert img.shape == (224, 224, 3)
 
     # normalize by ImageNet mean and std
-    img = img - _COCO_MEAN
-    img = img / _COCO_STD
+    img = img - IMAGE_MEAN
+    img = img / IMAGE_STD
     return img
 
 
 def show_image(ax: plt.Axes, image: torch.Tensor, title: str = '') -> None:
     # image is [H, W, 3]
     assert image.shape[2] == 3
-    ax.imshow(torch.clip((image * _COCO_STD + _COCO_MEAN) * 255, 0, 255).int())
+    ax.imshow(torch.clip((image * np.array(IMAGE_STD) + np.array(IMAGE_MEAN)) * 255, 0, 255).int())
     ax.set_title(title, fontsize=16)
     ax.axis('off')
 
 
-def prepare_model(path: str, arch: str):
+def prepare_model(path: str, arch: str, swin: bool = False, vic: bool = False):
     # get model class
-    model_cls = getattr(models_mae, arch)()
+    if swin:
+        model_cls = getattr(models_swin, arch)() 
+    elif vic:
+        model_cls = getattr(models_vicreg, arch)()
+    else:
+        model_cls = getattr(models_mae, arch)()
+
     # build model
     if path.endswith('.ckpt'):
         model = model_cls.load_from_checkpoint(path, map_location='cpu')
@@ -116,7 +132,7 @@ def run_one_image(img: np.array, model):
     with torch.no_grad():
         y, mask = model(x.float())
         loss = model.forward_loss(x.float(), y, mask)
-        y = model.unpatchify(y)
+        # y = model.unpatchify(y)
         y = torch.einsum('nchw->nhwc', y).detach().cpu()
 
     # visualize the mask
@@ -194,11 +210,12 @@ def run_visualizer(args, model, name_extension: str = None):
 
 if __name__ == "__main__":
     args = get_parser().parse_args()
+    print(args)
     torch.manual_seed(args.seed)
 
     # load model
     if True:
-        model = prepare_model(args.path, args.model)
+        model = prepare_model(args.path, args.model, args.swin, args.vic)
         run_visualizer(args, model)
 
     else:
