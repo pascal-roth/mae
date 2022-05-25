@@ -56,7 +56,7 @@ class MaskedAutoencoderSwin(pl.LightningModule):
                  warmup_epochs=40,
                  total_train_epochs: int = 800, 
                  decoder: str = 'DecoderFPN',
-                 area_mask: bool = True
+                 area_mask: bool = False
                 ) -> None:
         super().__init__()
 

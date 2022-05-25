@@ -29,12 +29,12 @@ def get_parser():
     parser = argparse.ArgumentParser(description="MAE Visualizer")
     parser.add_argument(
         "--model", "-m",
-        default='mae_swin_t',
+        default='mae_vit_base_patch16',
         help='model name'
     )
     parser.add_argument(
         "--path",
-        default="output_mae_swin/checkpoints/last.ckpt",
+        default="output_mae_img_loss/checkpoints/last.ckpt",
         help="path to model ckpt or weight pth file",
     )
     parser.add_argument(
@@ -47,7 +47,7 @@ def get_parser():
     )
     parser.add_argument(
         "--output",
-        default="output_mae_swin",
+        default="output_mae_img_loss",
         help="A file or directory to save output visualizations. "
              "If not given, will show output in an OpenCV window.",
     )
@@ -58,7 +58,7 @@ def get_parser():
     )
     parser.add_argument(
         '--swin', 
-        action='store_false',
+        action='store_true',
         help='decide if swin architecture should be used'
     )
     parser.add_argument(
@@ -119,7 +119,7 @@ def prepare_model(path: str, arch: str, swin: bool = False, vic: bool = False):
     return model
 
 
-def run_one_image(img: np.array, model):
+def run_one_image(img: np.array, model, swin):
     x = torch.tensor(img)
 
     # make it a batch-like
@@ -132,7 +132,8 @@ def run_one_image(img: np.array, model):
     with torch.no_grad():
         y, mask = model(x.float())
         loss = model.forward_loss(x.float(), y, mask)
-        # y = model.unpatchify(y)
+        if not swin:
+            y = model.unpatchify(y)
         y = torch.einsum('nchw->nhwc', y).detach().cpu()
 
     # visualize the mask
@@ -177,7 +178,7 @@ def run_visualizer(args, model, name_extension: str = None):
         start_time = time.time()
         print("Image Shape:")
         print(img.shape)
-        fig = run_one_image(img, model)
+        fig = run_one_image(img, model, args.swin)
         _logger.info(
             "{}: finished in {:.2f}s".format(
                 path if path else 'Example',

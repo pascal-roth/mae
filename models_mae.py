@@ -228,17 +228,32 @@ class MaskedAutoencoderViT(pl.LightningModule):
         pred: [N, L, p*p*3]
         mask: [N, L], 0 is keep, 1 is remove, 
         """
-        target = self.patchify(imgs)
-        if self.norm_pix_loss:
-            mean = target.mean(dim=-1, keepdim=True)
-            var = target.var(dim=-1, keepdim=True)
-            target = (target - mean) / (var + 1.e-6)**.5
-
-        loss = (pred - target) ** 2
-        loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
-
-        loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
+        
+        # pixel wise loss
+        pred_unpatch = self.unpatchify(pred)
+        loss = (pred_unpatch - imgs) ** 2
+        loss_patched = self.patchify(loss)
+        loss_patched = loss_patched.mean(dim=-1)  # [N, L], mean loss per patch
+        loss = (loss_patched * mask).sum() / mask.sum()  # mean loss on removed patches
         return loss
+
+    # def forward_loss(self, imgs, pred, mask):
+    #     """
+    #     imgs: [N, 3, H, W]
+    #     pred: [N, L, p*p*3]
+    #     mask: [N, L], 0 is keep, 1 is remove, 
+    #     """
+    #     target = self.patchify(imgs)
+    #     if self.norm_pix_loss:
+    #         mean = target.mean(dim=-1, keepdim=True)
+    #         var = target.var(dim=-1, keepdim=True)
+    #         target = (target - mean) / (var + 1.e-6)**.5
+
+    #     loss = (pred - target) ** 2
+    #     loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
+
+    #     loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
+    #     return loss
 
     def forward(self, imgs):
         latent, mask, ids_restore = self.forward_encoder(imgs)
@@ -279,10 +294,17 @@ class MaskedAutoencoderViT(pl.LightningModule):
 
 
 def mae_vit_base_patch16_dec512d8b(**kwargs):
+    pretrained_weights = kwargs.pop('pretrain_path', None)
     model = MaskedAutoencoderViT(
         patch_size=16, embed_dim=768, depth=12, num_heads=12,
         decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
         mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+    
+    if pretrained_weights:
+        msg = model.load_state_dict(torch.load(pretrained_weights, map_location=model.device)['model'], strict=False)
+        print(f"PRE-TRAINED WEIGHTS LOADED FROM {pretrained_weights}")
+        print(msg)
+        
     return model
 
 

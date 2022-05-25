@@ -38,7 +38,7 @@ def get_args_parser():
     parser = argparse.ArgumentParser('MAE pre-training', add_help=False)
 
     # Model parameters
-    parser.add_argument('--model', default='mae_swin_t', type=str, metavar='MODEL',
+    parser.add_argument('--model', default='mae_vit_base_patch16', type=str, metavar='MODEL',
                         help='Name of model to train')
     parser.add_argument('--input_size', default=224, type=int,
                         help='images input size')
@@ -47,10 +47,14 @@ def get_args_parser():
     parser.add_argument('--norm_pix_loss', action='store_true',
                         help='Use (per-patch) normalized pixels as targets for computing loss')
     parser.set_defaults(norm_pix_loss=False)
-    parser.add_argument('--swin', action='store_false',
-                        help='decide if swin architecture should be used')
-    parser.add_argument('--pretrain', default='./self_sup_seg/models/mae_pytorch/swin_tiny_patch4_window7_224.pth', 
+    parser.add_argument('--pretrain', default='./self_sup_seg/models/mae_pytorch/mae_pretrain_vit_base_full.pth', 
                         type=str, help='path to pre-trained model weight (only use weights from original repo)')
+
+    # SWIN Model parameters
+    parser.add_argument('--swin', action='store_true',
+                        help='decide if swin architecture should be used')
+    parser.add_argument('--area_mask', action='store_false', 
+                        help='For masking use a patch size 4 times larger than the swin patch size (masking same as for ViT)')
 
     # Optimizer parameters
     parser.add_argument('--weight_decay', type=float, default=0.05,
@@ -196,12 +200,13 @@ def main(args):
         model = models_swin.__dict__[args.model](norm_pix_loss=args.norm_pix_loss, mask_ratio=args.mask_ratio,
                                                  weight_decay=args.weight_decay, lr=args.lr, min_lr=args.min_lr,
                                                  warmup_epochs=args.warmup_epochs, img_size=args.input_size,
-                                                 total_train_epochs=args.epochs, pretrain_path=args.pretrain)
+                                                 total_train_epochs=args.epochs, pretrain_path=args.pretrain, 
+                                                 area_mask=args.area_mask)
     else:
         model = models_mae.__dict__[args.model](norm_pix_loss=args.norm_pix_loss, mask_ratio=args.mask_ratio,
                                                 weight_decay=args.weight_decay, lr=args.lr, min_lr=args.min_lr,
                                                 warmup_epochs=args.warmup_epochs, img_size=args.input_size,
-                                                total_train_epochs=args.epochs)
+                                                total_train_epochs=args.epochs, pretrain_path=args.pretrain)
 
     trainer = Trainer(accumulate_grad_batches=args.accum_iter, gradient_clip_val=0,
                       logger=[wandb_logger, tb_logger], 
