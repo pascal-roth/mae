@@ -43,9 +43,6 @@ class MaskedAutoencoderSwin(pl.LightningModule):
                  embed_dim=96,
                  depths=[2, 2, 6, 2], 
                  num_heads=[3, 6, 12, 24],  
-                 decoder_embed_dim=512, 
-                 decoder_depth=8, 
-                 decoder_num_heads=16,
                  mlp_ratio=4., 
                  norm_layer=nn.LayerNorm, 
                  norm_pix_loss=False,
@@ -277,6 +274,7 @@ class MaskedAutoencoderSwin(pl.LightningModule):
         x = x.flatten(2).transpose(1,2)
 
         # masking: length -> length * self.mask_ratio
+        torch.random.seed()
         x, mask = self.random_masking(x)
 
         # append cls token

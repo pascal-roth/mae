@@ -17,7 +17,7 @@ from self_sup_seg.third_party.mae.models_mae import MaskedAutoencoderViT
 from self_sup_seg.third_party.mae.vicreg.utils import off_diagonal, FullGatherLayer
 
 
-class MaskedAutoencoderVicReg(MaskedAutoencoderViT):
+class MaskedAutoencoderViTVICReg(MaskedAutoencoderViT):
     """
     Masked Autoencoder with VisionTransformer backbone
     """
@@ -128,36 +128,9 @@ class MaskedAutoencoderVicReg(MaskedAutoencoderViT):
         self.log('mae2_val_loss', loss_mae_2, on_step=True, on_epoch=True, prog_bar=False, logger=True)
         self.log('val_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
 
-    def configure_optimizers(self):
-        param_groups = optim_factory.add_weight_decay(self, self.weight_decay)
-        optimizer = torch.optim.AdamW(param_groups, lr=self.lr, betas=(0.9, 0.95))
-        scheduler = WarmupCosLRScheduler(optimizer, init_lr=self.lr, warmup_epochs=self.warumup_epochs,
-                                         min_lr=self.min_lr, total_epochs=self.total_train_epochs)
-        return [optimizer], [scheduler]
-
-    def lr_scheduler_step(
-        self,
-        scheduler: WarmupCosLRScheduler,
-        optimizer_idx: int,
-        metric: Optional[Any],
-    ) -> None:
-        scheduler.step(epoch=self.current_epoch)
-
-
-# def Projector(mlp, embedding):
-#     mlp_spec = f"{embedding}-{mlp}"
-#     layers = []
-#     f = list(map(int, mlp_spec.split("-")))
-#     for i in range(len(f) - 2):
-#         layers.append(nn.Linear(f[i], f[i + 1]))
-#         layers.append(nn.BatchNorm1d(f[i + 1]))
-#         layers.append(nn.ReLU(True))
-#     layers.append(nn.Linear(f[-2], f[-1], bias=False))
-#     return nn.Sequential(*layers)
-
 
 def mae_vit_base_patch16_vic(**kwargs):
-    model = MaskedAutoencoderVicReg(
+    model = MaskedAutoencoderViTVICReg(
         patch_size=16, embed_dim=768, depth=12, num_heads=12,
         decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
         mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
@@ -165,7 +138,7 @@ def mae_vit_base_patch16_vic(**kwargs):
 
 
 def mae_vit_large_patch16_vic(**kwargs):
-    model = MaskedAutoencoderVicReg(
+    model = MaskedAutoencoderViTVICReg(
         patch_size=16, embed_dim=1024, depth=24, num_heads=16,
         decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
         mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
@@ -173,7 +146,7 @@ def mae_vit_large_patch16_vic(**kwargs):
 
 
 def mae_vit_huge_patch14_vic(**kwargs):
-    model = MaskedAutoencoderVicReg(
+    model = MaskedAutoencoderViTVICReg(
         patch_size=14, embed_dim=1280, depth=32, num_heads=16,
         decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
         mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)

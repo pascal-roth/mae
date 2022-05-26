@@ -16,7 +16,7 @@ import requests
 
 # import scripts
 import self_sup_seg.third_party.mae.models_mae as models_mae
-import self_sup_seg.third_party.mae.models_vicreg as models_vicreg
+import self_sup_seg.third_party.mae.models_mae_vicreg as models_mae_vicreg
 import self_sup_seg.third_party.mae.models_swin as models_swin
 from self_sup_seg.third_party.mae.params import IMAGE_MEAN, IMAGE_STD
 from self_sup_seg.utils.logger import _logger
@@ -101,7 +101,7 @@ def prepare_model(path: str, arch: str, swin: bool = False, vic: bool = False):
     if swin:
         model_cls = getattr(models_swin, arch)() 
     elif vic:
-        model_cls = getattr(models_vicreg, arch)()
+        model_cls = getattr(models_mae_vicreg, arch)()
     else:
         model_cls = getattr(models_mae, arch)()
 
