@@ -52,9 +52,9 @@ def get_args_parser():
                         type=str, help='path to pre-trained model weight (only use weights from original repo)')
 
     # SWIN Model parameters
-    parser.add_argument('--swin', action='store_false',
+    parser.add_argument('--swin', action='store_true',
                         help='decide if swin architecture should be used')
-    parser.add_argument('--area_mask', action='store_false', 
+    parser.add_argument('--area_mask', action='store_true', 
                         help='For masking use a patch size 4 times larger than the swin patch size (masking same as for ViT)')
 
     # Optimizer parameters
@@ -109,7 +109,7 @@ def get_args_parser():
                         help='Inputs are normalized with this std (default is the one from params.py)')
 
     # Variance-Invariance-Covariance Loss Parameters
-    parser.add_argument('--vic', action='store_false',
+    parser.add_argument('--vic', action='store_true',
                         help='Activate VicReg Loss')
     parser.add_argument('--vic-aug', action='store_true',
                         help='activate the additional augmentations presented in VICReg')
@@ -170,12 +170,12 @@ def main(args):
     )
 
     # define LOGGER
-    # wandb_logger = WandbLogger(
-    #     name=args.wb_name,
-    #     project=args.wb_project,
-    #     entity=args.wb_entity,
-    #     save_dir=args.log_dir,
-    # )
+    wandb_logger = WandbLogger(
+        name=args.wb_name,
+        project=args.wb_project,
+        entity=args.wb_entity,
+        save_dir=args.log_dir,
+    )
     tb_logger = TensorBoardLogger(
         name="tb",
         version="",
@@ -220,7 +220,7 @@ def main(args):
                                                 total_train_epochs=args.epochs, pretrain_path=args.pretrain)
 
     trainer = Trainer(accumulate_grad_batches=args.accum_iter, gradient_clip_val=0,
-                      # logger=[wandb_logger, tb_logger], 
+                      logger=[wandb_logger, tb_logger], 
                       callbacks=[checkpoint_local_callback, lr_monitor],
                       max_epochs=args.epochs,
                       strategy="ddp",

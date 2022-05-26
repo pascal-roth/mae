@@ -45,11 +45,12 @@ class Solarization(object):
 
 class TrainTransform(object):
     def __init__(self, 
+                 crop_size: int = 224,
                  vic_aug: bool = True
                 ) -> None:
         
         self.transform_base = transforms.RandomResizedCrop(
-                    224, interpolation=InterpolationMode.BICUBIC
+                    crop_size, interpolation=InterpolationMode.BICUBIC
                 )
         if vic_aug:
             self.transform = transforms.Compose(
