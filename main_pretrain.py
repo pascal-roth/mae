@@ -132,7 +132,7 @@ def main(args):
 
     # simple augmentation and data loading
     if args.vic:
-        transform_train = TrainTransform(args.vic_aug)
+        transform_train = TrainTransform(args.input_size, args.vic_aug)
     else:
         transform_train = transforms.Compose([
             transforms.RandomResizedCrop(args.input_size, scale=(0.2, 1.0), interpolation=3),  # 3 is bicubic
