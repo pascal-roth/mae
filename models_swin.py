@@ -396,7 +396,10 @@ def mae_swin_t(**kwargs):
         mlp_ratio=4.0, **kwargs)
 
     if pretrained_weights:
-        msg = model.load_state_dict(torch.load(pretrained_weights, map_location=model.device)['model'], strict=False)
+        try:
+            msg = model.load_state_dict(torch.load(pretrained_weights, map_location=model.device)['model'], strict=False)
+        except KeyError:
+            msg = model.load_state_dict(torch.load(pretrained_weights, map_location=model.device), strict=False)
         print(f"PRE-TRAINED WEIGHTS LOADED FROM {pretrained_weights}")
         print(msg)
 
