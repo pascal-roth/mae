@@ -53,7 +53,8 @@ class MaskedAutoencoderSwin(pl.LightningModule):
                  warmup_epochs=40,
                  total_train_epochs: int = 800, 
                  decoder: str = 'DecoderFPN',
-                 area_mask: bool = False
+                 area_mask: bool = False,
+                 start_epoch: int = 0
                 ) -> None:
         super().__init__()
 
@@ -68,6 +69,7 @@ class MaskedAutoencoderSwin(pl.LightningModule):
         self.area_mask_constant: int = 4
         if self.area_mask:
             assert img_size % self.area_mask_constant == 0, f'For increased patch size masking, the img size has to be dividable by {self.area_mask_constant}'
+        self.start_epoch = start_epoch
 
         self.save_hyperparameters()
 
@@ -376,7 +378,8 @@ class MaskedAutoencoderSwin(pl.LightningModule):
         param_groups = optim_factory.add_weight_decay(self, self.weight_decay)
         optimizer = torch.optim.AdamW(param_groups, lr=self.lr, betas=(0.9, 0.95))
         scheduler = WarmupCosLRScheduler(optimizer, init_lr=self.lr, warmup_epochs=self.warumup_epochs,
-                                         min_lr=self.min_lr, total_epochs=self.total_train_epochs)
+                                         min_lr=self.min_lr, total_epochs=self.total_train_epochs,
+                                         start_epoch=self.start_epoch)
         return [optimizer], [scheduler]
 
     def lr_scheduler_step(

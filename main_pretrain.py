@@ -48,11 +48,11 @@ def get_args_parser():
     parser.add_argument('--norm_pix_loss', action='store_true',
                         help='Use (per-patch) normalized pixels as targets for computing loss')
     parser.set_defaults(norm_pix_loss=False)
-    parser.add_argument('--pretrain', default='./self_sup_seg/models/mae_pytorch/swin_tiny_patch4_window7_224.pth', 
+    parser.add_argument('--pretrain', default=None, 
                         type=str, help='path to pre-trained model weight (only use weights from original repo)')
 
     # SWIN Model parameters
-    parser.add_argument('--swin', action='store_true',
+    parser.add_argument('--swin', action='store_false',
                         help='decide if swin architecture should be used')
     parser.add_argument('--area_mask', action='store_true', 
                         help='For masking use a patch size 4 times larger than the swin patch size (masking same as for ViT)')
@@ -79,11 +79,11 @@ def get_args_parser():
     parser.add_argument('--devices', default=1,
                         help='number of devices to use')
     parser.add_argument('--seed', default=0, type=int)
-    parser.add_argument('--ckpt_path', default=None,
+    parser.add_argument('--ckpt_path', default='output/output_mae_swin_xldata_m2f-backend/checkpoints/last.ckpt',
                         help='ckpt_path to resume training from')
 
     # Wandb Parameters
-    parser.add_argument('--wb-name', type=str, default='mae',
+    parser.add_argument('--wb-name', type=str, default='mae_try',
                         help='Run name for Weights and Biases')
     parser.add_argument('--wb-project', type=str, default='ssl_pan_seg',
                         help='Project name for Weights and Biases')
@@ -208,11 +208,17 @@ def main(args):
                                                             weight_vic_loss=args.weight_vic, sim_coeff=args.sim_coeff, 
                                                             std_coeff=args.std_coeff, cov_coeff=args.cov_coeff)
     elif args.swin:
-        model = models_swin.__dict__[args.model](norm_pix_loss=args.norm_pix_loss, mask_ratio=args.mask_ratio,
-                                                 weight_decay=args.weight_decay, lr=args.lr, min_lr=args.min_lr,
-                                                 warmup_epochs=args.warmup_epochs, img_size=args.input_size,
-                                                 total_train_epochs=args.epochs, pretrain_path=args.pretrain, 
-                                                 area_mask=args.area_mask)
+        if args.ckpt_path:
+            model = models_swin.MaskedAutoencoderSwin.load_from_checkpoint(args.ckpt_path)
+            # change parameters for lr scheduler, all other parameters are assumend to not change when training is continued
+            model.start_epoch = model.total_train_epochs
+            model.total_train_epochs = args.epochs
+        else:
+            model = models_swin.__dict__[args.model](norm_pix_loss=args.norm_pix_loss, mask_ratio=args.mask_ratio,
+                                                    weight_decay=args.weight_decay, lr=args.lr, min_lr=args.min_lr,
+                                                    warmup_epochs=args.warmup_epochs, img_size=args.input_size,
+                                                    total_train_epochs=args.epochs, pretrain_path=args.pretrain, 
+                                                    area_mask=args.area_mask)
     else:
         model = models_mae.__dict__[args.model](norm_pix_loss=args.norm_pix_loss, mask_ratio=args.mask_ratio,
                                                 weight_decay=args.weight_decay, lr=args.lr, min_lr=args.min_lr,
