@@ -52,7 +52,7 @@ def get_args_parser():
                         type=str, help='path to pre-trained model weight (only use weights from original repo)')
 
     # SWIN Model parameters
-    parser.add_argument('--swin', action='store_false',
+    parser.add_argument('--swin', action='store_true',
                         help='decide if swin architecture should be used')
     parser.add_argument('--area_mask', action='store_true', 
                         help='For masking use a patch size 4 times larger than the swin patch size (masking same as for ViT)')
