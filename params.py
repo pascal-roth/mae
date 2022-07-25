@@ -1,3 +1,6 @@
 # Image Details for Augmentation 
-IMAGE_MEAN = [0.485, 0.456, 0.406]  # (IMAGENET)  [123.675, 116.280, 103.530]  # (COCO)
-IMAGE_STD  = [0.229, 0.224, 0.225]  # (IMAGENET)  [58.395, 57.120, 57.375]     # (COCO)
+
+# Image MEAN and STD
+IMAGE_MEAN = [0.485, 0.456, 0.406]
+IMAGE_STD  = [0.229, 0.224, 0.225]
+# ATTENTION: the normalization value in m2f are these values times 255 (both steps in 1)

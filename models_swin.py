@@ -1,4 +1,3 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
 
 # This source code is licensed under the license found in the
@@ -10,10 +9,12 @@
 # --------------------------------------------------------
 
 from functools import partial
+import imp
 from typing import Optional, Any
 
 import torch
 import torch.nn as nn
+from torchvision.transforms import Resize, InterpolationMode
 import pytorch_lightning as pl
 
 # import timm
@@ -42,9 +43,6 @@ class MaskedAutoencoderSwin(pl.LightningModule):
                  embed_dim=96,
                  depths=[2, 2, 6, 2], 
                  num_heads=[3, 6, 12, 24],  
-                 decoder_embed_dim=512, 
-                 decoder_depth=8, 
-                 decoder_num_heads=16,
                  mlp_ratio=4., 
                  norm_layer=nn.LayerNorm, 
                  norm_pix_loss=False,
@@ -55,7 +53,8 @@ class MaskedAutoencoderSwin(pl.LightningModule):
                  warmup_epochs=40,
                  total_train_epochs: int = 800, 
                  decoder: str = 'DecoderFPN',
-                 area_mask: bool = False
+                 area_mask: bool = False,
+                 start_epoch: int = 0
                 ) -> None:
         super().__init__()
 
@@ -70,6 +69,7 @@ class MaskedAutoencoderSwin(pl.LightningModule):
         self.area_mask_constant: int = 4
         if self.area_mask:
             assert img_size % self.area_mask_constant == 0, f'For increased patch size masking, the img size has to be dividable by {self.area_mask_constant}'
+        self.start_epoch = start_epoch
 
         self.save_hyperparameters()
 
@@ -232,6 +232,9 @@ class MaskedAutoencoderSwin(pl.LightningModule):
         """
         N, L, D = x.shape  # batch, length, dim
 
+        if self.area_mask:
+            L = int(L / self.area_mask_constant**2)
+
         noise = torch.rand(N, L, device=x.device)  # noise in [0, 1]
 
         # sort noise for each sample
@@ -239,18 +242,16 @@ class MaskedAutoencoderSwin(pl.LightningModule):
         ids_restore = torch.argsort(ids_shuffle, dim=1)
   
         # generate the binary mask: 0 is keep, 1 is remove
+        len_keep = int(L * (1 - self.mask_ratio))
+        mask = torch.ones([N, L], device=x.device)
+        mask[:, :len_keep] = 0
+        # unshuffle to get the binary mask
+        mask = torch.gather(mask, dim=1, index=ids_restore)
+
         if self.area_mask:
-            len_keep = int(L/self.area_mask_constant * (1 - self.mask_ratio))
-            mask = torch.ones([int(N/self.area_mask_constant), int(L/self.area_mask_constant)], device=x.device)
-            mask[:, :len_keep] = 0
-            # unshuffle to get the binary mask
-            mask = torch.gather(mask, dim=1, index=ids_restore)
-        else:
-            len_keep = int(L * (1 - self.mask_ratio))
-            mask = torch.ones([int(N/4), int(L/4)], device=x.device)
-            mask[:, :len_keep] = 0
-            # unshuffle to get the binary mask
-            mask = torch.gather(mask, dim=1, index=ids_restore)
+            mask = torch.reshape(mask, (N, int(L**0.5), int(L**0.5)))
+            mask = Resize((int(L**0.5 * self.area_mask_constant), int(L**0.5 * self.area_mask_constant)), interpolation=InterpolationMode.NEAREST)(mask) 
+            mask = torch.flatten(mask, start_dim=-2)
         
         # unsqueeze mask
         mask_extend = mask.unsqueeze(-1).repeat(1, 1, D)
@@ -275,6 +276,7 @@ class MaskedAutoencoderSwin(pl.LightningModule):
         x = x.flatten(2).transpose(1,2)
 
         # masking: length -> length * self.mask_ratio
+        torch.random.seed()
         x, mask = self.random_masking(x)
 
         # append cls token
@@ -376,7 +378,8 @@ class MaskedAutoencoderSwin(pl.LightningModule):
         param_groups = optim_factory.add_weight_decay(self, self.weight_decay)
         optimizer = torch.optim.AdamW(param_groups, lr=self.lr, betas=(0.9, 0.95))
         scheduler = WarmupCosLRScheduler(optimizer, init_lr=self.lr, warmup_epochs=self.warumup_epochs,
-                                         min_lr=self.min_lr, total_epochs=self.total_train_epochs)
+                                         min_lr=self.min_lr, total_epochs=self.total_train_epochs,
+                                         start_epoch=self.start_epoch)
         return [optimizer], [scheduler]
 
     def lr_scheduler_step(
@@ -396,7 +399,10 @@ def mae_swin_t(**kwargs):
         mlp_ratio=4.0, **kwargs)
 
     if pretrained_weights:
-        msg = model.load_state_dict(torch.load(pretrained_weights, map_location=model.device)['model'], strict=False)
+        try:
+            msg = model.load_state_dict(torch.load(pretrained_weights, map_location=model.device)['model'], strict=False)
+        except KeyError:
+            msg = model.load_state_dict(torch.load(pretrained_weights, map_location=model.device), strict=False)
         print(f"PRE-TRAINED WEIGHTS LOADED FROM {pretrained_weights}")
         print(msg)
 

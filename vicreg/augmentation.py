@@ -44,55 +44,79 @@ class Solarization(object):
 
 
 class TrainTransform(object):
-    def __init__(self):
+    def __init__(self, 
+                 crop_size: int = 224,
+                 vic_aug: bool = True
+                ) -> None:
+        
         self.transform_base = transforms.RandomResizedCrop(
-                    224, interpolation=InterpolationMode.BICUBIC
+                    crop_size, interpolation=InterpolationMode.BICUBIC
                 )
-        self.transform = transforms.Compose(
-            [
-                transforms.RandomHorizontalFlip(p=0.5),
-                transforms.RandomApply(
-                    [
-                        transforms.ColorJitter(
-                            brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1
-                        )
-                    ],
-                    p=0.8,
-                ),
-                transforms.RandomGrayscale(p=0.2),
-                GaussianBlur(p=1.0),
-                Solarization(p=0.0),
-                transforms.ToTensor(),
-                transforms.Normalize(
-                    mean=IMAGE_MEAN, std=IMAGE_STD
-                ),
-            ]
-        )
-        self.transform_prime = transforms.Compose(
-            [
-                transforms.RandomHorizontalFlip(p=0.5),
-                transforms.RandomApply(
-                    [
-                        transforms.ColorJitter(
-                            brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1
-                        )
-                    ],
-                    p=0.8,
-                ),
-                transforms.RandomGrayscale(p=0.2),
-                GaussianBlur(p=0.1),
-                Solarization(p=0.2),
-                transforms.ToTensor(),
-                transforms.Normalize(
-                    mean=IMAGE_MEAN, std=IMAGE_STD
-                ),
-            ]
-        )
+        if vic_aug:
+            self.transform = transforms.Compose(
+                [
+                    transforms.RandomHorizontalFlip(p=0.5),
+                    transforms.RandomApply(
+                        [
+                            transforms.ColorJitter(
+                                brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1
+                            )
+                        ],
+                        p=0.8,
+                    ),
+                    transforms.RandomGrayscale(p=0.2),
+                    GaussianBlur(p=1.0),
+                    Solarization(p=0.0),
+                    transforms.ToTensor(),
+                    transforms.Normalize(
+                        mean=IMAGE_MEAN, std=IMAGE_STD
+                    ),
+                ]
+            )
+            self.transform_prime = transforms.Compose(
+                [
+                    transforms.RandomHorizontalFlip(p=0.5),
+                    transforms.RandomApply(
+                        [
+                            transforms.ColorJitter(
+                                brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1
+                            )
+                        ],
+                        p=0.8,
+                    ),
+                    transforms.RandomGrayscale(p=0.2),
+                    GaussianBlur(p=0.1),
+                    Solarization(p=0.2),
+                    transforms.ToTensor(),
+                    transforms.Normalize(
+                        mean=IMAGE_MEAN, std=IMAGE_STD
+                    ),
+                ]
+            )
+        else:
+            self.transform = transforms.Compose(
+                [
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ToTensor(),
+                    transforms.Normalize(
+                        mean=IMAGE_MEAN, std=IMAGE_STD
+                    ),
+                ]
+            )
+            self.transform_prime = transforms.Compose(
+                [
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ToTensor(),
+                    transforms.Normalize(
+                        mean=IMAGE_MEAN, std=IMAGE_STD
+                    ),
+                ]
+            )
 
     def __call__(self, sample):
         # make base transform equally for each image --> manual_seed
         rand_mask_int = torch.randint(low=0, high=10000, size=(1,)) 
-        torch.manual_seed(0)
+        torch.manual_seed(rand_mask_int)
         sample_base = self.transform_base(sample)
         # further augmentation has to be made randomly for each image
         torch.random.seed()

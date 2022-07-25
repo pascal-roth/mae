@@ -50,20 +50,22 @@ class WarmupCosLRScheduler(LearningRateScheduler):
             init_lr: float,
             min_lr: float,
             warmup_epochs: int,
-            total_epochs: int
+            total_epochs: int, 
+            start_epoch: int = 0,
     ) -> None:
         super(WarmupCosLRScheduler, self).__init__(optimizer, init_lr)
         self.update_steps = 1
         self.min_lr = min_lr
         self.warmup_epochs = warmup_epochs
-        self.epochs = total_epochs
+        self.max_epochs = total_epochs
+        self.start_epoch = start_epoch
 
     def step(self, epoch, val_loss: Optional[torch.FloatTensor] = None):
-        if epoch < self.warmup_epochs:
-            lr = self.init_lr * epoch / self.warmup_epochs
+        if (epoch-self.start_epoch) < self.warmup_epochs:
+            lr = self.init_lr * (epoch-self.start_epoch) / self.warmup_epochs
         else:
             lr = self.min_lr + (self.init_lr - self.min_lr) * 0.5 * \
-                 (1. + math.cos(math.pi * (epoch - self.warmup_epochs) / (self.epochs - self.warmup_epochs)))
+                 (1. + math.cos(math.pi * ((epoch-self.start_epoch) - self.warmup_epochs) / ((self.max_epochs-self.start_epoch) - self.warmup_epochs)))
         self.set_lr(self.optimizer, lr)
         self.update_steps += 1
         return lr
