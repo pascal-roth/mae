@@ -197,32 +197,6 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
 
     # load model
-    if True:
-        model = prepare_model(args.path, args.model)
-        run_visualizer(args, model)
+    model = prepare_model(args.path, args.model)
+    run_visualizer(args, model)
 
-    else:
-        torch.manual_seed(args.seed)
-        args.input = None
-        model_full = prepare_model('/media/pascal/TOSHIBA EXT/ETH/mae_pretrain_vit_large_full.pth', args.model)
-        run_visualizer(args, model_full, name_extension='_full')
-        
-        torch.manual_seed(args.seed)
-        args.input = None
-        model_demo = prepare_model('/media/pascal/TOSHIBA EXT/ETH/mae_visualize_vit_large.pth', args.model)  
-        run_visualizer(args, model_demo, name_extension='_demo')
-        
-        torch.manual_seed(args.seed)
-        args.input = None
-        model_fine = prepare_model('/media/pascal/TOSHIBA EXT/ETH/mae_finetuned_vit_large.pth', args.model)  # decoder weights are missing
-        run_visualizer(args, model_fine, name_extension='_fine')
-
-        torch.manual_seed(args.seed)
-        args.input=None
-        model_gan  = prepare_model('/media/pascal/TOSHIBA EXT/ETH/mae_visualize_vit_large_ganloss.pth', args.model)
-        run_visualizer(args, model_gan,  name_extension='_gan')
-
-        torch.manual_seed(args.seed)
-        args.input = None
-        model_mae  = prepare_model('/home/pascal/ETH/2_semester/project/mae_pretrain_vit_large.pth', args.model)  # decoder weights are missing
-        run_visualizer(args, model_mae,  name_extension='_mae')

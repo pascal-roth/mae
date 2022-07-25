@@ -54,7 +54,8 @@ class MaskedAutoencoderSwin(pl.LightningModule):
                  min_lr=0, 
                  warmup_epochs=40,
                  total_train_epochs: int = 800, 
-                 decoder: str = 'DecoderFPN'
+                 decoder: str = 'DecoderFPN',
+                 area_mask: bool = False
                 ) -> None:
         super().__init__()
 
@@ -65,6 +66,11 @@ class MaskedAutoencoderSwin(pl.LightningModule):
         self.min_lr: float = min_lr
         self.warumup_epochs: int = warmup_epochs
         self.total_train_epochs: int = total_train_epochs
+        self.area_mask: bool = area_mask
+        self.area_mask_constant: int = 4
+        if self.area_mask:
+            assert img_size % self.area_mask_constant == 0, f'For increased patch size masking, the img size has to be dividable by {self.area_mask_constant}'
+
         self.save_hyperparameters()
 
         # eff_batch_size = args.batch_size * args.accum_iter * misc.get_world_size()
@@ -225,7 +231,6 @@ class MaskedAutoencoderSwin(pl.LightningModule):
         x: [N, L, D], sequence
         """
         N, L, D = x.shape  # batch, length, dim
-        len_keep = int(L * (1 - self.mask_ratio))
 
         noise = torch.rand(N, L, device=x.device)  # noise in [0, 1]
 
@@ -234,10 +239,19 @@ class MaskedAutoencoderSwin(pl.LightningModule):
         ids_restore = torch.argsort(ids_shuffle, dim=1)
   
         # generate the binary mask: 0 is keep, 1 is remove
-        mask = torch.ones([N, L], device=x.device)
-        mask[:, :len_keep] = 0
-        # unshuffle to get the binary mask
-        mask = torch.gather(mask, dim=1, index=ids_restore)
+        if self.area_mask:
+            len_keep = int(L/self.area_mask_constant * (1 - self.mask_ratio))
+            mask = torch.ones([int(N/self.area_mask_constant), int(L/self.area_mask_constant)], device=x.device)
+            mask[:, :len_keep] = 0
+            # unshuffle to get the binary mask
+            mask = torch.gather(mask, dim=1, index=ids_restore)
+        else:
+            len_keep = int(L * (1 - self.mask_ratio))
+            mask = torch.ones([int(N/4), int(L/4)], device=x.device)
+            mask[:, :len_keep] = 0
+            # unshuffle to get the binary mask
+            mask = torch.gather(mask, dim=1, index=ids_restore)
+        
         # unsqueeze mask
         mask_extend = mask.unsqueeze(-1).repeat(1, 1, D)
         
